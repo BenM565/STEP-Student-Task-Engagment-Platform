@@ -1,964 +1,1811 @@
-# received bootstrap code from ChatGPT
-# for flask SQLAlchemy "Flask SQLAlchemy Tutorial for Database - GeeksforGeeks"
-# app route layout from ChatGPT
-import MySQLdb
-import mysql
-from flask_sqlalchemy import SQLAlchemy
+"""
+================================================================================
+STEP STUDENT TASK ENGAGEMENT PLATFORM - MAIN APPLICATION
+================================================================================
 
-print("APP.PY STARTED")
+Main Flask application file containing:
+- Configuration and initialization
+- Database models
+- Authentication routes
+- Task management routes
+- Student routes
+- Company routes
+- Admin routes
+- University routes
+- Payment and email integration (Iteration 5)
+- Real-time events (SSE)
+
+Versions:
+- Iteration 1-4: Core platform functionality
+- Iteration 5: Portfolio, Search, Email, Payments
+- Latest: Fully structured and refactored
+
+References:
+- Flask: https://flask.palletsprojects.com/
+- Flask-Login: https://flask-login.readthedocs.io/
+- SQLAlchemy: https://flask-sqlalchemy.palletsprojects.com/
+- Werkzeug: https://werkzeug.palletsprojects.com/
+"""
+
+# ============================================================================
+# SECTION 1: IMPORTS
+# ============================================================================
 
 import os
+import json
+import time
+import queue
+from datetime import datetime, timedelta
+from typing import Dict, List
+from functools import wraps
 
-from dotenv import load_dotenv
-# itteration 1 of the code
-from flask import Flask, render_template, redirect, url_for, flash, request
-from flask_login import (
-    LoginManager,
-    login_user,
-    logout_user,
-    login_required,
-    current_user,
-    UserMixin,
+# Flask core imports
+from flask import (
+    Flask, render_template, request, redirect, url_for, flash, abort,
+    Response, stream_with_context, session, jsonify
 )
-from sqlalchemy import func, \
-    text  # use SQL functions inside object relational mapping queries so you don't use SQL anymore; you interact directly with an object in the same language you're using.
+
+# Flask extensions
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_mail import Mail
+from sqlalchemy.dialects import mysql
+from sqlalchemy import func
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# Load environment variables from a local .env file if present DATABASE_URL FLASK_SECRET
-load_dotenv()
+# Flask-Login for authentication
+try:
+    from flask_login import (
+        LoginManager, UserMixin, login_user, logout_user,
+        login_required, current_user,
+    )
+    _FLASK_LOGIN_AVAILABLE = True
+except Exception:
+    _FLASK_LOGIN_AVAILABLE = False
+    from functools import wraps
+    from flask import session, redirect, url_for
 
-# Create a Flask application instance
+    class UserMixin:
+        @property
+        def is_authenticated(self):
+            return True
+
+        @property
+        def is_anonymous(self):
+            return False
+
+        def get_id(self):
+            return str(getattr(self, "id", "0"))
+
+    class AnonymousUser:
+        is_authenticated = False
+        is_anonymous = True
+        id = None
+        role = None
+
+    _user_loader_callback = None
+
+    class LoginManager:
+        def __init__(self, app=None):
+            self.login_view = "login"
+            if app is not None:
+                self.init_app(app)
+
+        def init_app(self, app):
+            return None
+
+        def user_loader(self, fn):
+            global _user_loader_callback
+            _user_loader_callback = fn
+            return fn
+
+    def _load_current_user():
+        uid = session.get("_user_id")
+        if _user_loader_callback and uid is not None:
+            try:
+                user = _user_loader_callback(uid)
+                if user:
+                    return user
+            except Exception:
+                pass
+        return AnonymousUser()
+
+    def login_user(user):
+        try:
+            session["_user_id"] = int(user.id)
+        except Exception:
+            session["_user_id"] = getattr(user, "id", None)
+
+    def logout_user():
+        session.pop("_user_id", None)
+
+    def login_required(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = _load_current_user()
+            if not getattr(user, "is_authenticated", False):
+                return redirect(url_for("login"))
+            return fn(*args, **kwargs)
+        return wrapper
+
+    current_user = property(lambda self: _load_current_user())
+
+# ============================================================================
+# ITERATION 5 IMPORTS: Email Service
+# ============================================================================
+
+# Fallback function for missing email service
+def _noop_email(*args, **kwargs):
+    """No-op function for when email service is not available"""
+    return None
+
+try:
+    from email_service import (
+        send_task_posted_notification,
+        send_application_received_notification,
+        send_application_accepted_notification,
+        send_application_rejected_notification,
+        send_work_submitted_notification,
+        send_work_approved_notification,
+        send_change_requested_notification,
+        send_dispute_notification
+    )
+except (ImportError, ModuleNotFoundError):
+    # Fallback if email_service.py not found
+    send_task_posted_notification = _noop_email
+    send_application_received_notification = _noop_email
+    send_application_accepted_notification = _noop_email
+    send_application_rejected_notification = _noop_email
+    send_work_submitted_notification = _noop_email
+    send_work_approved_notification = _noop_email
+    send_change_requested_notification = _noop_email
+    send_dispute_notification = _noop_email
+
+# ============================================================================
+# ITERATION 5 IMPORTS: Payment Service
+# ============================================================================
+
+# Fallback classes for missing payment service
+class PaymentError(Exception):
+    """Payment processing error"""
+    message = "Payment error"
+
+class EscrowManager:
+    """Fallback escrow manager when service not available"""
+    pass
+
+def init_escrow_manager():
+    """Initialize escrow manager (returns None if not available)"""
+    return None
+
+try:
+    from payment_service import EscrowManager, init_escrow_manager, PaymentError
+except (ImportError, ModuleNotFoundError):
+    # Fallback definitions above will be used
+    pass
+
+# ============================================================================
+# SECTION 2: FLASK APP INITIALIZATION
+# ============================================================================
+
 app = Flask(__name__)
 
-# Configure a secret key for sign session cookies and protection
-app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET", "dev")
-
-# Configure SQLAlchemy database URI
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///app.db")
-
-
-# Disable the SQLAlchemy event system that tracks modifications in memory
-# This reduces memory overhead when not needed
+# Database configuration
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///step.db"
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
-# Initialize database and login manager extensions
-# These must be created after app configuration
-login_manager = LoginManager(app)
+# File upload configuration
+app.config["UPLOAD_FOLDER"] = os.path.join("static", "uploads")
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB limit
 
-# Configure the login view endpoint name used by @login_required
-login_manager.login_view = "login"
+# Ensure upload directory exists
+os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+# ============================================================================
+# SECTION 3: ITERATION 5 CONFIGURATION - Email & Payments
+# ============================================================================
+
+# Email configuration (Flask-Mail)
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv(
+    'MAIL_DEFAULT_SENDER',
+    'noreply@step-platform.com'
+)
+
+# Application URL (for email links)
+app.config['APP_URL'] = os.getenv('APP_URL', 'http://localhost:5000')
+
+# Payment configuration (Stripe)
+app.config['STRIPE_PUBLIC_KEY'] = os.getenv('STRIPE_PUBLIC_KEY')
+app.config['STRIPE_SECRET_KEY'] = os.getenv('STRIPE_SECRET_KEY')
+app.config['STRIPE_WEBHOOK_SECRET'] = os.getenv('STRIPE_WEBHOOK_SECRET')
+app.config['PLATFORM_FEE_PERCENT'] = float(os.getenv('PLATFORM_FEE_PERCENT', 10))
+
+# Initialize Flask-Mail
+mail = Mail(app)
+
+# Initialize payment system
+escrow_manager = None
+if app.config['STRIPE_SECRET_KEY']:
+    try:
+        escrow_manager = init_escrow_manager()
+    except Exception as e:
+        print(f"[Warning] Payment system initialization failed: {e}")
+
+# ============================================================================
+# SECTION 4: DATABASE INITIALIZATION
+# ============================================================================
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
 
-# Database Models
+# ============================================================================
+# SECTION 5: REAL-TIME EVENTS (SSE) - Server-Sent Events Broker
+# ============================================================================
 
+class EventBroker:
+    """
+    In-memory pub/sub broker for Server-Sent Events (SSE).
+
+    Publishes real-time notifications to connected clients.
+    Single-process only; for production use Redis or similar.
+    """
+
+    def __init__(self):
+        """Initialize empty subscriber dictionary"""
+        self._subscribers: Dict[int, List[queue.Queue]] = {}
+
+    def subscribe(self, user_id: int) -> queue.Queue:
+        """Subscribe a user to event stream"""
+        q = queue.Queue()
+        self._subscribers.setdefault(int(user_id), []).append(q)
+        return q
+
+    def unsubscribe(self, user_id: int, q: queue.Queue):
+        """Unsubscribe a user from event stream"""
+        lst = self._subscribers.get(int(user_id), [])
+        if q in lst:
+            lst.remove(q)
+        if not lst and int(user_id) in self._subscribers:
+            del self._subscribers[int(user_id)]
+
+    def publish(self, user_id: int, event: dict):
+        """Publish event to all subscribers of a user"""
+        for q in list(self._subscribers.get(int(user_id), [])):
+            try:
+                q.put_nowait(event)
+            except Exception:
+                pass
+
+# Global event broker instance
+broker = EventBroker()
+
+# SSE endpoint for real-time notifications
+@app.route("/events")
+@login_required
+def sse_events():
+    """
+    Server-Sent Events endpoint for real-time notifications.
+
+    Streams JSON events to connected clients until disconnect.
+    Emits keep-alive comments to prevent idle timeout.
+    """
+    def event_stream(user_id: int):
+        """Generator yielding SSE frames"""
+        q = broker.subscribe(user_id)
+        try:
+            yield "retry: 10000\n\n"
+            while True:
+                try:
+                    ev = q.get(timeout=25)
+                    payload = json.dumps(ev)
+                    yield f"data: {payload}\n\n"
+                except queue.Empty:
+                    yield ": keep-alive\n\n"
+        finally:
+            broker.unsubscribe(user_id, q)
+
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    }
+    return Response(stream_with_context(event_stream(current_user.id)), headers=headers)
+
+# ============================================================================
+# SECTION 6: DATABASE MODELS
+# ============================================================================
+
+# ============================================================================
+# 6.1 USER MODEL - Represents students, companies, admins, university staff
+# ============================================================================
 
 class User(UserMixin, db.Model):
-    # Table that stores both student and company accounts
-    __tablename__ = "users"
+    """
+    User model representing all user types in the system.
 
-    # Primary key identifier
+    Attributes:
+    - id: Primary key
+    - name: Full name
+    - email: Email address (unique)
+    - password: Hashed password
+    - role: User role (student, company, admin, university)
+    - verified: Verification status (for students)
+    - university_id: Foreign key to university
+    - skills: Comma-separated list of skills (students)
+    - grades: Academic grades/credentials (students)
+    - projects: Project descriptions (students)
+    - department: Department name (university staff)
+    - trust_score: Dynamic trust score (0-100)
+    - stripe_customer_id: Stripe customer ID (companies)
+    - profile_url: Public portfolio URL slug (students)
+    """
+
     id = db.Column(db.Integer, primary_key=True)
-
-    # Role of the user: "student" or "company"
-    role = db.Column(db.String(20), nullable=False, default="student")
-
-    # Display name for the account
-    name = db.Column(db.String(120), nullable=False)
-
-    # Email address for login; indexed and unique for fast lookup and uniqueness
-    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
-
-    # Hashed password using Werkzeug helpers
-    password_hash = db.Column(db.String(255), nullable=False)
-
-    # Optional student profile fields
-    skills = db.Column(db.Text)
-    grades = db.Column(db.String(120))
-    projects = db.Column(db.Text)
-    references = db.Column(db.Text)
-
-    # Whether the account has been verified based on email rules or manual review
+    name = db.Column(db.String(150), nullable=False)
+    email = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), nullable=False)
     verified = db.Column(db.Boolean, default=False)
 
-    # Password helper to set a hashed password
-    def set_password(self, pw: str) -> None:
-        self.password_hash = generate_password_hash(pw)
+    # University linkage
+    university_id = db.Column(db.Integer, db.ForeignKey("university.id"), nullable=True)
 
-    # Password helper to verify a plaintext password against the stored hash
-    def check_password(self, pw: str) -> bool:
-        return check_password_hash(self.password_hash, pw)
+    # Student-specific fields
+    skills = db.Column(db.Text)
+    grades = db.Column(db.Text)
+    projects = db.Column(db.Text)
 
+    # University staff field
+    department = db.Column(db.String(120))
+
+    # Trust score (0-100)
+    trust_score = db.Column(db.Float, default=0.0)
+
+    # Iteration 5 fields
+    stripe_customer_id = db.Column(db.String(255), nullable=True)
+    profile_url = db.Column(db.String(120), unique=True, nullable=True)
+
+    # Relationships
+    university = db.relationship("University", backref="students", foreign_keys=[university_id])
+
+    def set_password(self, password):
+        """Hash and store password"""
+        self.password = generate_password_hash(password)
+
+    def check_password(self, password):
+        """Verify password against hash"""
+        return check_password_hash(self.password, password)
+
+    @property
+    def is_company(self) -> bool:
+        """Check if user is a company"""
+        return (self.role or "").lower() == "company"
+
+    @property
+    def is_student(self) -> bool:
+        """Check if user is a student"""
+        return (self.role or "").lower() == "student"
+
+    @property
+    def is_admin(self) -> bool:
+        """Check if user is an admin"""
+        return (self.role or "").lower() == "admin"
+
+# ============================================================================
+# 6.2 UNIVERSITY MODEL
+# ============================================================================
+
+class University(db.Model):
+    """
+    University model for academic institution management.
+
+    Attributes:
+    - id: Primary key
+    - name: University name
+    - domain: Email domain for automatic linking
+    - created_at: Creation timestamp
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    domain = db.Column(db.String(120), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+# ============================================================================
+# 6.3 TASK MODEL - Work posted by companies
+# ============================================================================
 
 class Task(db.Model):
-    # Tasks posted by company users for students to apply to
-    __tablename__ = "tasks"
+    """
+    Task model representing work posted by companies.
 
-    # Primary key identifier
+    Attributes:
+    - id: Primary key
+    - title: Task title
+    - description: Full task description
+    - company_id: Foreign key to company user
+    - media_file: Uploaded task media
+    - created_at: Creation timestamp
+    - requirements: Task requirements
+    - estimated_hours: Estimated duration
+    - tags: Skill tags (comma-separated)
+    - payment_type: 'fixed' or 'hourly'
+    - fixed_price: Fixed price amount
+    - hourly_rate: Hourly rate
+    - status: Task status (open, in_progress, completed)
+    """
+
     id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(140), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    company_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    media_file = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    requirements = db.Column(db.Text, nullable=True)
+    estimated_hours = db.Column(db.Integer, nullable=True)
+    tags = db.Column(db.Text)
 
-    # Short title or summary of the task
-    title = db.Column(db.String(200), nullable=False)
+    # Payment fields
+    payment_type = db.Column(db.String(20), nullable=False, default="fixed")
+    fixed_price = db.Column(db.Float, nullable=True)
+    hourly_rate = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(20), default="open")
 
-    # Detailed requirements or description of the task
-    requirements = db.Column(db.Text)
+    # Relationships
+    company = db.relationship("User", backref="tasks", foreign_keys=[company_id])
 
-    # Estimated effort for the task in hours
-    estimated_hours = db.Column(db.Integer)
-
-    # Foreign key linking the task to the company user that created it
-    company_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-
-    # Backref relationship configured below on Application; optional helper list of applications
-    applications = db.relationship(
-        "Application", backref="task", cascade="all, delete-orphan"
-    )
-
+# ============================================================================
+# 6.4 APPLICATION MODEL - Student applications for tasks
+# ============================================================================
 
 class Application(db.Model):
-    # Applications submitted by student users for a specific task
-    __tablename__ = "applications"
+    """
+    Application model linking students to tasks.
 
-    # Primary key identifier
+    Attributes:
+    - id: Primary key
+    - task_id: Foreign key to task
+    - student_id: Foreign key to student
+    - status: Application status (pending, in_progress, completed, rejected)
+    - created_at: Application timestamp
+    - media_file: Company-uploaded file
+    - review_status: Approval status
+    - review_feedback: Company feedback
+    - student_file: Student submission file
+    - selected: Selection flag
+    - submitted_at: Submission timestamp
+    - completed_at: Completion timestamp
+    - deadline_at: Expected deadline
+    - change_requests_count: Number of change requests
+    - first_pass_success: Approved without revisions flag
+    - payment_intent_id: Stripe PaymentIntent ID (Iteration 5)
+    - payment_status: Payment status (pending, authorized, captured, refunded)
+    - payment_authorized_at: Authorization timestamp
+    - payment_captured_at: Capture timestamp
+    """
+
     id = db.Column(db.Integer, primary_key=True)
-
-    # Foreign key to the related task
-    task_id = db.Column(db.Integer, db.ForeignKey("tasks.id"), nullable=False)
-
-    # Foreign key to the applying student (stored in users table)
-    student_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-
-    # Application workflow status; default is pending
+    task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     status = db.Column(db.String(20), default="pending")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    media_file = db.Column(db.String(255))
+    review_status = db.Column(db.String(50))
+    review_feedback = db.Column(db.Text)
+    student_file = db.Column(db.String(255))
+    selected = db.Column(db.Boolean, default=False)
+    submitted_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    deadline_at = db.Column(db.DateTime, nullable=True)
+    change_requests_count = db.Column(db.Integer, default=0)
+    first_pass_success = db.Column(db.Boolean, default=False)
 
-    # Server-side timestamp for when the application was created
-    created_at = db.Column(db.DateTime, server_default=func.now())
+    # Iteration 5: Payment fields
+    payment_intent_id = db.Column(db.String(255), nullable=True)
+    payment_status = db.Column(db.String(20), default="pending")
+    payment_authorized_at = db.Column(db.DateTime, nullable=True)
+    payment_captured_at = db.Column(db.DateTime, nullable=True)
 
-
-
-# Login manager user loader
-
-@login_manager.user_loader
-def load_user(user_id: str):
-    # Flask-Login callback to load a user object by its id
-    # Must return None if user is not found
-    try:
-        return User.query.get(int(user_id))
-    except Exception:
-        return None
-
-
-# Helper functions
-
-
-def is_student_email(email: str) -> bool:
-    # Basic line to mark student accounts as verified based on the email domain
-    email_lower = (email or "").lower()
-    return email_lower.endswith(".ie") or "student" in email_lower
-
-
-# used ChatGPT for a framework of routes but added info inside to customize website
-# Routes
-@app.route("/")
-def index():
-    # Always send users to the real login route
-    # Prevents POSTs from hitting '/' which only allows GET
-    return redirect(url_for("login"))
-
-@app.after_request
-def no_store(response):
-    # Prevent caching of authenticated pages and forms
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-# register a user account [company/student]
-# register a user account [student/company/admin]
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    # Handle account creation for students, companies and admins
-    if request.method == "POST":
-        role = request.form.get("role", "student").strip()
-        name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").lower().strip()
-        password = request.form.get("password", "")
-
-        # Set default values for optional profile fields so they are always defined
-        skills = None
-        grades = None
-        projects = None
-        references = None
-
-        # Collect student-only fields when role is student
-        if role == "student":
-            skills = request.form.get("skills", "").strip()
-            grades = request.form.get("grades", "").strip()
-            projects = request.form.get("projects", "").strip()
-            references = request.form.get("references", "").strip()
-
-        # Collect optional company fields if you later want to use them
-        if role == "company":
-            skills_needed = request.form.get("company_skills_needed", "").strip()
-            comp_task_title = request.form.get("company_task_title", "").strip()
-            comp_task_requirements = request.form.get("company_task_requirements", "").strip()
-            comp_task_estimate = request.form.get("company_task_estimate", "").strip()
-            skills = skills_needed
-
-        # Basic validation: prevent missing critical fields
-        if not name or not email or not password:
-            flash("Name, email and password are required.", "danger")
-            return redirect(url_for("register"))
-
-        # Prevent duplicate registrations by email
-        if User.query.filter_by(email=email).first():
-            flash("Email already registered.", "danger")
-            return redirect(url_for("register"))
-
-        # Create a user record and set an initial verification flag
-        user = User(
-            role=role,
-            name=name,
-            email=email,
-            skills=skills,
-            grades=grades,
-            projects=projects,
-            references=references,
-        )
-        # Hash the password before storing it
-        user.set_password(password)
-
-        # Mark student accounts as verified based on email rule, others start unverified
-        user.verified = is_student_email(email) if role == "student" else False
-
-        # Persist user so they get an id
-        db.session.add(user)
-        db.session.flush()
-
-        # If a company included a first task in the registration form, create it
-        if role == "company":
-            comp_task_title = locals().get("comp_task_title", "")
-            comp_task_requirements = locals().get("comp_task_requirements", "")
-            comp_task_estimate = locals().get("comp_task_estimate", "")
-            if comp_task_title:
-                try:
-                    est_hours = int(comp_task_estimate) if comp_task_estimate else None
-                except ValueError:
-                    est_hours = None
-                task = Task(
-                    title=comp_task_title,
-                    requirements=comp_task_requirements,
-                    estimated_hours=est_hours,
-                    company_id=user.id,
-                )
-                db.session.add(task)
-
-        # Commit all changes
-        db.session.commit()
-
-        # If the new account is an admin, log them in immediately and send to their UI
-        if role == "admin":
-            # Log the new admin user into the current session
-            login_user(user)
-            flash("Admin account created and logged in.", "success")
-            # For now reuse the dashboard view as the admin UI
-            return redirect(url_for("dashboard"))
-
-        # All other users are asked to log in normally
-        flash("Account created. You can now log in.", "success")
-        return redirect(url_for("login"))
-
-    # Render registration page on GET
-    return render_template("register.html")
-
-
-
-from sqlalchemy import func, or_  #make sure or_ is imported at the top
-
-@app.route("/tasks", methods=["GET"])
-@login_required
-def student_tasks():
-    #only allow student users to see the global task board
-    if current_user.role != "student":
-        flash("Only students can view the task board.", "danger")
-        return redirect(url_for("dashboard"))
-    #read filter values from the query string
-    skill = (request.args.get("skill") or "").strip()
-    max_hours_raw = (request.args.get("max_hours") or "").strip()
-    #start with a base query that gets all tasks
-    query = Task.query
-    #if a skill filter is provided, match it against title or requirements using case-insensitive LIKE
-    if skill:
-        like_pattern = f"%{skill}%"
-        query = query.filter(
-            or_(
-                Task.title.ilike(like_pattern),
-                Task.requirements.ilike(like_pattern),
-            )
-        )
-    #parse the maximum hours filter from the form
-    max_hours = None
-    if max_hours_raw:
-        try:
-            max_hours = int(max_hours_raw)
-        except ValueError:
-            max_hours = None
-    #if a valid maximum is provided, limit tasks to that estimated_hours or less
-    if max_hours is not None:
-        query = query.filter(Task.estimated_hours != None).filter(Task.estimated_hours <= max_hours)
-    #execute the query and order results
-    tasks = query.order_by(Task.id.asc()).all()
-    #render the student task board with the current filters and tasks
-    return render_template(
-        "student_tasks.html",
-        user=current_user,
-        tasks=tasks,
-        skill=skill,
-        max_hours=max_hours_raw,
+    __table_args__ = (
+        db.UniqueConstraint("task_id", "student_id", name="uq_application_task_student"),
     )
 
+    # Relationships
+    task = db.relationship("Task", backref="applications")
+    student = db.relationship("User", backref="applications", foreign_keys=[student_id])
 
+# ============================================================================
+# 6.5 LECTURER REFERENCE MODEL
+# ============================================================================
 
+class LecturerReference(db.Model):
+    """
+    Lecturer reference model for student credibility.
 
-# login to an existing account
+    Attributes:
+    - id: Primary key
+    - student_id: Foreign key to student
+    - lecturer_name: Name of lecturer providing reference
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    lecturer_name = db.Column(db.String(150), nullable=False)
+    student = db.relationship("User", backref="lecturer_references")
+
+# ============================================================================
+# 6.6 PROJECT MEDIA MODEL - Student portfolio files
+# ============================================================================
+
+class ProjectMedia(db.Model):
+    """
+    Project media model for student portfolio.
+
+    Attributes:
+    - id: Primary key
+    - user_id: Foreign key to student
+    - filename: Stored filename
+    - title: Display title
+    - uploaded_at: Upload timestamp
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    title = db.Column(db.String(200))
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship("User", backref="project_media")
+
+# ============================================================================
+# 6.7 NOTIFICATION MODEL
+# ============================================================================
+
+class Notification(db.Model):
+    """
+    Notification model for user alerts.
+
+    Attributes:
+    - id: Primary key
+    - message: Notification message
+    - is_read: Read status flag
+    - created_at: Creation timestamp
+    - user_id: Foreign key to recipient
+    - task_id: Optional related task
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.String(255))
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=True)
+
+# ============================================================================
+# 6.8 DISPUTE MODEL
+# ============================================================================
+
+class Dispute(db.Model):
+    """
+    Dispute model for conflict resolution.
+
+    Attributes:
+    - id: Primary key
+    - raised_by_user_id: User who raised the dispute
+    - against_user_id: User dispute is against
+    - task_id: Related task
+    - message: Dispute description
+    - status: Status (open, in_review, resolved)
+    - resolution_note: Admin resolution note
+    - severity: Severity level (1-5)
+    - ai_suggested_resolution: AI triage suggestion
+    - created_at: Creation timestamp
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    raised_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    against_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    task_id = db.Column(db.Integer, db.ForeignKey("task.id"))
+    message = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default="open")
+    resolution_note = db.Column(db.Text)
+    severity = db.Column(db.Integer, default=1)
+    ai_suggested_resolution = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    raised_by_user = db.relationship("User", foreign_keys=[raised_by_user_id])
+    against_user = db.relationship("User", foreign_keys=[against_user_id])
+    task = db.relationship("Task")
+
+# ============================================================================
+# 6.9 REVIEW MODEL
+# ============================================================================
+
+class Review(db.Model):
+    """
+    Review model for task completion ratings.
+
+    Attributes:
+    - id: Primary key
+    - application_id: Related application
+    - rater_user_id: User giving review
+    - ratee_user_id: User being reviewed
+    - rating: Rating (1-5)
+    - comment: Review comment
+    - created_at: Creation timestamp
+    - updated_at: Last update timestamp
+    - editable_until: Deadline for edits
+    - is_hidden: Hidden status
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey("application.id"), nullable=False)
+    rater_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    ratee_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    editable_until = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.utcnow() + timedelta(days=7)
+    )
+    is_hidden = db.Column(db.Boolean, default=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "application_id",
+            "rater_user_id",
+            name="uq_review_once_per_reviewer_per_application"
+        ),
+    )
+
+    application = db.relationship("Application")
+    rater = db.relationship("User", foreign_keys=[rater_user_id])
+    ratee = db.relationship("User", foreign_keys=[ratee_user_id])
+
+# ============================================================================
+# 6.10 PAYMENT TRANSACTION MODEL (Iteration 5)
+# ============================================================================
+
+class PaymentTransaction(db.Model):
+    """
+    Payment transaction log for audit trail.
+
+    Tracks all payment events from creation through capture or refund.
+
+    Attributes:
+    - id: Primary key
+    - application_id: Related application
+    - payment_intent_id: Stripe PaymentIntent ID
+    - status: Payment status at transaction time
+    - event_type: Type of event
+    - amount_cents: Amount in cents
+    - details: Additional event details
+    - created_at: Transaction timestamp
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey("application.id"), nullable=False)
+    payment_intent_id = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(50), nullable=False)
+    event_type = db.Column(db.String(100), nullable=False)
+    amount_cents = db.Column(db.Integer, nullable=False)
+    details = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    application = db.relationship("Application", backref="payment_transactions")
+
+# ============================================================================
+# SECTION 7: FLASK-LOGIN USER LOADER
+# ============================================================================
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Load user session by ID"""
+    return db.session.get(User, int(user_id))
+
+# ============================================================================
+# SECTION 8: AUTHENTICATION ROUTES
+# ============================================================================
+
+# ============================================================================
+# 8.1 Root Route
+# ============================================================================
+
+@app.route("/")
+@login_required
+def index():
+    """
+    Root route - redirect to role-based dashboard.
+
+    Routes to:
+    - Students → student_dashboard
+    - Companies → company_dashboard
+    - Admin → admin_home
+    - University → university_dashboard
+    """
+    if current_user.role == "student":
+        return redirect(url_for("student_dashboard"))
+    elif current_user.role == "company":
+        return redirect(url_for("company_dashboard"))
+    elif current_user.role == "admin":
+        return redirect(url_for("admin_home"))
+    elif current_user.role == "university":
+        return redirect(url_for("university_dashboard"))
+    else:
+        return redirect(url_for("login"))
+
+# ============================================================================
+# 8.2 Registration Route
+# ============================================================================
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    """
+    User registration route.
+
+    Supports:
+    - Student registration (with university auto-linking)
+    - Company registration
+    - Email validation
+    - Password hashing
+    """
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password")
+        role = request.form.get("role", "student").lower()
+
+        if not name or not email or not password:
+            flash("Name, email, and password are required.", "danger")
+            return render_template("register.html")
+
+        # Check email uniqueness
+        existing = User.query.filter(func.lower(User.email) == email).first()
+        if existing:
+            flash("An account with this email already exists. Please log in.", "warning")
+            return redirect(url_for("login"))
+
+        # Create user
+        user = User(name=name, email=email, role=role)
+        user.set_password(password)
+
+        # Auto-link students to university by email domain
+        if role == "student":
+            try:
+                email_domain = (email.split("@", 1)[1] or "").lower()
+                uni = University.query.filter(
+                    func.lower(University.domain) == email_domain
+                ).first()
+
+                if not uni:
+                    # Try subdomain matching
+                    for dom in [ed.domain for ed in University.query.all()]:
+                        if dom and (email_domain == dom or email_domain.endswith("." + dom)):
+                            uni = University.query.filter_by(domain=dom).first()
+                            break
+
+                if uni:
+                    user.university_id = uni.id
+                else:
+                    # Create university entry if needed
+                    parts = email_domain.split(".")
+                    base = ".".join(parts[-2:]) if len(parts) >= 2 else email_domain
+                    uni = University(name=base.upper(), domain=email_domain)
+                    db.session.add(uni)
+                    db.session.flush()
+                    user.university_id = uni.id
+            except Exception as e:
+                print(f"[Register] University linking error: {e}")
+
+        db.session.add(user)
+        db.session.commit()
+        flash(f"Registration successful! Please log in.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
+
+# ============================================================================
+# 8.3 Login Route
+# ============================================================================
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    # Authenticate a user by verifying email and password
+    """
+    User login route.
+
+    Authenticates user and creates session.
+    Enforces organization email policy per role.
+    """
     if request.method == "POST":
-        email = request.form.get("email", "").lower().strip()
-        password = request.form.get("password", "")
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password")
+
+        if not email or not password:
+            flash("Email and password are required.", "danger")
+            return render_template("login.html")
+
         user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
-            login_user(user)
-            return redirect(url_for("dashboard"))
-        flash("Invalid credentials.", "danger")
+
+        if not user or not user.check_password(password):
+            flash("Invalid email or password.", "danger")
+            return render_template("login.html")
+
+        # Enforce organization email policy
+        if user.role == "company":
+            if "@" in email:
+                domain = email.split("@")[1]
+                if domain in ["gmail.com", "yahoo.com", "outlook.com"]:
+                    msg = "Companies must use a business email address."
+                    flash(msg, "warning")
+                    return render_template("login.html")
+
+        login_user(user)
+        flash(f"Welcome, {user.name}!", "success")
+        return redirect(url_for("index"))
+
     return render_template("login.html")
 
+# ============================================================================
+# 8.4 Logout Route
+# ============================================================================
 
-
-
-
-# logout of the current user
 @app.route("/logout")
 @login_required
 def logout():
-    # Log out the current user and return to the login page
+    """Logout user and redirect to login"""
     logout_user()
+    flash("You have been logged out.", "info")
     return redirect(url_for("login"))
 
+# ============================================================================
+# SECTION 9: STUDENT ROUTES
+# ============================================================================
 
+# ============================================================================
+# 9.1 Student Dashboard
+# ============================================================================
 
-
-
-# company dashboard to see tasks uploaded
-@app.route("/dashboard")
+@app.route("/student")
 @login_required
-def dashboard():
-    # Admin users
-    if current_user.role == "admin":
-        return redirect(url_for("admin_home"))
-
-    # COMPANY DASHBOARD
-    if current_user.role == "company":
-        rows = (
-            db.session.query(
-                Task,
-                func.count(Application.id).label("application_count")
-            )
-            .outerjoin(Application, Task.id == Application.task_id)
-            .filter(Task.company_id == current_user.id)
-            .group_by(Task.id)
-            .order_by(Task.id.desc())
-            .all()
-        )
-
-        # attach application_count to each task
-        tasks = []
-        for task, count in rows:
-            task.application_count = count
-            tasks.append(task)
-
-        return render_template(
-            "dashboard.html",
-            user=current_user,
-            tasks=tasks
-        )
-
-    # STUDENT DASHBOARD
-    if current_user.role == "student":
-        tasks = Task.query.order_by(Task.id.desc()).limit(5).all()
-        return render_template(
-            "dashboard.html",
-            user=current_user,
-            tasks=tasks
-        )
-
-
-
-
-# Allows students to apply to tasks
-@app.route("/tasks/<int:task_id>/apply", methods=["POST"])
-@login_required
-def apply(task_id: int):
-    # Allow only student users to apply to tasks
+def student_dashboard():
+    """
+    Student dashboard showing:
+    - Active tasks (applications in progress)
+    - Completed tasks (approved applications)
+    - Pending applications
+    - Recent notifications
+    - Trust score and ratings
+    """
     if current_user.role != "student":
-        flash("Only students can apply.", "danger")
-        return redirect(url_for("dashboard"))
+        abort(403)
 
-    # Prevent duplicate applications by the same student to the same task
-    exists = Application.query.filter_by(task_id=task_id, student_id=current_user.id).first()
-    if exists:
-        flash("You already applied.", "info")
-        return redirect(request.referrer or url_for("dashboard"))
+    # Get student's applications grouped by status
+    active_applications = Application.query.filter(
+        Application.student_id == current_user.id,
+        Application.status.in_(["pending", "in_progress"])
+    ).all()
 
-    # Create an application and persist to a database
-    appn = Application(task_id=task_id, student_id=current_user.id)
-    db.session.add(appn)
-    db.session.commit()
-    flash("Applied!", "success")
-    return redirect(request.referrer or url_for("dashboard"))
+    completed_applications = Application.query.filter(
+        Application.student_id == current_user.id,
+        Application.status == "completed"
+    ).all()
 
+    # Get recent notifications
+    notifications = Notification.query.filter(
+        Notification.user_id == current_user.id
+    ).order_by(Notification.created_at.desc()).limit(10).all()
 
+    # Fetch ratings
+    ratings = Review.query.filter(
+        Review.ratee_user_id == current_user.id,
+        Review.is_hidden == False
+    ).all()
 
-# Allows students to update their profile
-@app.route("/profile", methods=["GET", "POST"])
+    average_rating = (
+        sum(r.rating for r in ratings) / len(ratings) if ratings else 0.0
+    )
+
+    return render_template(
+        "student_dashboard.html",
+        active_applications=active_applications,
+        completed_applications=completed_applications,
+        notifications=notifications,
+        average_rating=average_rating,
+        num_ratings=len(ratings)
+    )
+
+# ============================================================================
+# 9.2 Browse Tasks
+# ============================================================================
+
+@app.route("/browse-tasks")
+def browse_tasks():
+    """
+    Browse available tasks.
+    Accessible to authenticated students.
+    Shows task details and application option.
+    """
+    tasks = Task.query.filter_by(status="open").all()
+    return render_template("browse_tasks.html", tasks=tasks)
+
+# ============================================================================
+# 9.3 Apply to Task
+# ============================================================================
+
+@app.route("/task/<int:task_id>/apply", methods=["POST"])
 @login_required
-def profile():
-    # Allow a user to update their profile and change the password
-    if request.method == "POST":
-        current_user.name = request.form.get("name", current_user.name).strip()
+def apply_to_task(task_id):
+    """
+    Submit application for a task.
 
-        # Handle optional password change if a non-empty value was submitted
-        new_pw = request.form.get("password", "").strip()
-        if new_pw:
-            current_user.set_password(new_pw)
+    POST Parameters:
+    - task_id: Task to apply for
 
-        # Allow only students to modify student-specific fields
-        if current_user.role == "student":
-            current_user.skills = request.form.get("skills", current_user.skills)
-            current_user.grades = request.form.get("grades", current_user.grades)
-            current_user.projects = request.form.get("projects", current_user.projects)
-            current_user.references = request.form.get("references", current_user.references)
+    Creates Application record and notifies company.
+    """
+    if current_user.role != "student":
+        abort(403)
 
+    task = db.session.get(Task, task_id)
+    if not task:
+        abort(404)
+
+    # Check for existing application
+    existing = Application.query.filter_by(
+        task_id=task_id,
+        student_id=current_user.id
+    ).first()
+
+    if existing:
+        flash("You have already applied for this task.", "warning")
+        return redirect(url_for("browse_tasks"))
+
+    # Create application
+    application = Application(task_id=task_id, student_id=current_user.id)
+    db.session.add(application)
+    db.session.commit()
+
+    # Send notification email to company
+    try:
+        send_application_received_notification(application, task, task.company)
+    except Exception as e:
+        print(f"[Email] Failed to send application notification: {e}")
+
+    # Create in-app notification
+    notif = Notification(
+        user_id=task.company_id,
+        task_id=task_id,
+        message=f"{current_user.name} applied for: {task.title}"
+    )
+    db.session.add(notif)
+
+    # Publish real-time event
+    broker.publish(task.company_id, {
+        "type": "application_received",
+        "student_name": current_user.name,
+        "task_title": task.title,
+        "application_id": application.id
+    })
+
+    db.session.commit()
+    flash("Application submitted successfully!", "success")
+    return redirect(url_for("browse_tasks"))
+
+# ============================================================================
+# 9.4 Student Profile
+# ============================================================================
+
+@app.route("/profile")
+@app.route("/profile/<int:user_id>")
+@login_required
+def profile(user_id=None):
+    """
+    Student profile view and edit.
+
+    Shows:
+    - Basic info (name, email, university)
+    - Skills and grades
+    - Projects and portfolio media
+    - Lecturer references
+    """
+    if user_id is None:
+        user = current_user
+    else:
+        user = db.session.get(User, user_id)
+        if not user or user.role != "student":
+            abort(404)
+
+    edit = request.args.get("edit", 0) == "1" and user.id == current_user.id
+
+    if request.method == "POST" and edit and user.id == current_user.id:
+        user.name = request.form.get("name", user.name)
+        user.email = request.form.get("email", user.email)
+        user.skills = request.form.get("skills", user.skills)
+        user.grades = request.form.get("grades", user.grades)
+        user.projects = request.form.get("projects", user.projects)
         db.session.commit()
-        flash("Profile updated.", "success")
+        flash("Profile updated successfully!", "success")
+        return redirect(url_for("profile", user_id=user.id))
+
+    return render_template("profile.html", user=user, edit=edit)
+
+# ============================================================================
+# 9.5 Student Notifications
+# ============================================================================
+
+@app.route("/student/notifications")
+@login_required
+def student_notifications():
+    """Show student's notifications"""
+    if current_user.role != "student":
+        abort(403)
+
+    notifications = Notification.query.filter_by(
+        user_id=current_user.id
+    ).order_by(Notification.created_at.desc()).all()
+
+    return render_template("student_notifications.html", notifications=notifications)
+
+# ============================================================================
+# 9.6 Mark Notification Read
+# ============================================================================
+
+@app.route("/student/notifications/<int:notif_id>/read", methods=["POST"])
+@login_required
+def mark_notification_read(notif_id):
+    """Mark notification as read"""
+    notification = db.session.get(Notification, notif_id)
+    if not notification or notification.user_id != current_user.id:
+        abort(403)
+
+    notification.is_read = True
+    db.session.commit()
+    flash("Notification marked as read.", "success")
+    return redirect(request.referrer or url_for("student_notifications"))
+
+# ============================================================================
+# 9.7 Upload Project Media
+# ============================================================================
+
+@app.route("/student/upload-project-media", methods=["POST"])
+@login_required
+def student_upload_project_media():
+    """
+    Upload project media for portfolio.
+
+    Supports file uploads with optional title.
+    """
+    if current_user.role != "student":
+        abort(403)
+
+    if "file" not in request.files:
+        flash("No file provided.", "danger")
         return redirect(url_for("profile"))
 
-    # Render profile page for GET requests
-    return render_template("profile.html", user=current_user)
+    file = request.files["file"]
+    title = request.form.get("title", "Project").strip()
 
+    if file.filename == "":
+        flash("No file selected.", "danger")
+        return redirect(url_for("profile"))
 
+    # Save file
+    filename = f"{int(time.time())}_{file.filename}"
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    file.save(filepath)
 
-
-
-
-# Task creation route for company user
-@app.route("/tasks/<int:task_id>/delete", methods=["POST"])
-@login_required
-def delete_task(task_id: int):
-    # Only company users can delete tasks
-    if current_user.role != "company":
-        flash("Only company users can delete tasks.", "danger")
-        return redirect(url_for("dashboard"))
-
-    task = Task.query.get_or_404(task_id)
-
-    # Prevent deleting tasks that are not owned by this company
-    if task.company_id != current_user.id:
-        flash("You are not allowed to delete this task.", "danger")
-        return redirect(url_for("dashboard"))
-
-    db.session.delete(task)
+    # Create media record
+    media = ProjectMedia(user_id=current_user.id, filename=filename, title=title)
+    db.session.add(media)
     db.session.commit()
-    flash("Task deleted.", "success")
-    return redirect(url_for("dashboard"))
 
+    flash("Project media uploaded successfully!", "success")
+    return redirect(url_for("profile"))
 
+# ============================================================================
+# 9.8 Add Lecturer Reference
+# ============================================================================
 
-
-
-# Companys option to edit tasks
-@app.route("/tasks/<int:task_id>/edit", methods=["GET", "POST"])
+@app.route("/student/add-lecturer-reference", methods=["POST"])
 @login_required
-def edit_task(task_id: int):
-    # Only company users can edit
-    if current_user.role != "company":
-        flash("Only company users can edit tasks.", "danger")
-        return redirect(url_for("dashboard"))
-    # Fetch the task or 404 if missing
-    task = Task.query.get_or_404(task_id)
-    # Ensure the current company owns the task
-    if task.company_id != current_user.id:
-        flash("You are not allowed to edit this task.", "danger")
-        return redirect(url_for("dashboard"))
-    # Handle form submit
-    if request.method == "POST":
-        # Update fields from form inputs
-        title = (request.form.get("title") or "").strip()
-        requirements = (request.form.get("requirements") or "").strip()
-        est_raw = (request.form.get("estimated_hours") or "").strip()
-        if not title:
-            flash("Title is required.", "danger")
-            return render_template("edit_task.html", task=task)
-        try:
-            estimated_hours = int(est_raw) if est_raw else None
-        except ValueError:
-            estimated_hours = None
-        task.title = title
-        task.requirements = requirements
-        task.estimated_hours = estimated_hours
-        db.session.commit()
-        flash("Task updated.", "success")
-        return redirect(url_for("dashboard"))
-    # Render form with current values for GET
-    return render_template("edit_task.html", task=task)
-
-
-
-
-
-# Company user can add a new task
-@app.route("/tasks/new", methods=["GET", "POST"])
-@login_required
-def add_task():
-    # Only company users can add tasks
-    if current_user.role != "company":
-        flash("Only company users can add tasks.", "danger")
-        return redirect(url_for("dashboard"))
-    if request.method == "POST":
-        # Extract and sanitize inputs
-        title = (request.form.get("title") or "").strip()
-        requirements = (request.form.get("requirements") or "").strip()
-        est_raw = (request.form.get("estimated_hours") or "").strip()
-        # Basic validation for title
-        if not title:
-            flash("Title is required.", "danger")
-            return render_template("add_task.html")
-        # Parse estimated hours as integer if provided
-        try:
-            estimated_hours = int(est_raw) if est_raw else None
-        except ValueError:
-            estimated_hours = None
-        # Create and persist the task row
-        task = Task(
-            title=title,
-            requirements=requirements,
-            estimated_hours=estimated_hours,
-            company_id=current_user.id,
-        )
-        db.session.add(task)
-        db.session.commit()
-        flash("Task created.", "success")
-        return redirect(url_for("dashboard"))
-    # Render the blank task form on GET
-    return render_template("add_task.html")
-
-# iteration 2
-# app routes from ChatGPT
-
-#Filter code for tasks filter() in python - GeeksforGeeks
-
-# Dispute model used for raising and managing disputes between users and tasks
-class Dispute(db.Model):
-    # table name in the database
-    __tablename__ = "disputes"
-    # primary key for the dispute row
-    id = db.Column(db.Integer, primary_key=True)
-    # optional link to a task if the dispute is related to a specific task
-    task_id = db.Column(db.Integer, db.ForeignKey("tasks.id"), nullable=True)
-    # user id of the person who raised the dispute
-    raised_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    # optional user id that the dispute is against
-    against_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    # dispute status in a simple lifecycle: open -> in_review -> resolved
-    status = db.Column(db.String(20), nullable=False, default="open")
-    # free text message describing the issue
-    message = db.Column(db.Text, nullable=False)
-    # timestamp when the dispute was created
-    created_at = db.Column(db.DateTime, server_default=func.now())
-    # timestamp when the dispute was resolved
-    resolved_at = db.Column(db.DateTime)
-    # admin user id who resolved the dispute
-    resolved_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"))
-    # free text note describing how the dispute was resolved
-    resolution_note = db.Column(db.Text)
-
-
-from functools import wraps
-from datetime import datetime  # needed for setting resolved_at
-
-def admin_required(view_func):
-    # decorator to restrict a route to admin users only
-    @wraps(view_func)
-    @login_required
-    def wrapper(*args, **kwargs):
-        # check the role field instead of a missing is_admin attribute
-        if getattr(current_user, "role", None) != "admin":
-            flash("Admin access required.", "danger")
-            return redirect(url_for("dashboard"))
-        return view_func(*args, **kwargs)
-    return wrapper
-
-# admin landing page
-@app.route("/admin")
-@admin_required
-def admin_home():
-    # admin landing page collects unverified users and open disputes
-    unverified = User.query.filter_by(verified=False, role="student").all()
-    open_disputes = Dispute.query.filter_by(status="open").order_by(Dispute.created_at.desc()).all()
-    # render the main admin dashboard template with both lists
-    return render_template("admin_home.html", unverified=unverified, open_disputes=open_disputes)
-
-# dispute new page
-@app.route("/disputes/new", methods=["GET", "POST"])
-@login_required
-def dispute_new():
-    # allow students and companies to open a dispute
-    if current_user.role not in ("student", "company"):
-        flash("Only students and companies can create disputes.", "danger")
-        return redirect(url_for("dashboard"))
-
-    if request.method == "POST":
-        # get form fields safely
-        task_id_raw = (request.form.get("task_id") or "").strip()
-        message = (request.form.get("message") or "").strip()
-        against_user_id_raw = (request.form.get("against_user_id") or "").strip()
-
-        # parse integers for foreign keys
-        task_id = int(task_id_raw) if task_id_raw.isdigit() else None
-        against_user_id = int(against_user_id_raw) if against_user_id_raw.isdigit() else None
-
-        # require a message to describe the issue
-        if not message:
-            flash("Please describe the issue.", "danger")
-            return render_template("dispute_new.html", user=current_user, user_tasks=[])
-
-        # create and store the dispute in the database
-        d = Dispute(
-            task_id=task_id,
-            raised_by_user_id=current_user.id,
-            against_user_id=against_user_id,
-            message=message,
-            status="open",
-        )
-        db.session.add(d)
-        db.session.commit()
-        flash("Dispute submitted.", "success")
-        return redirect(url_for("dashboard"))
-
-    # build a helpful list of tasks for the dropdown
-    user_tasks = []
-    if current_user.role == "company":
-        # company users see tasks they created
-        user_tasks = Task.query.filter_by(company_id=current_user.id).all()
-    elif current_user.role == "student":
-        # students see tasks they applied for
-        task_ids = [a.task_id for a in Application.query.filter_by(student_id=current_user.id).all()]
-        if task_ids:
-            user_tasks = Task.query.filter(Task.id.in_(task_ids)).all()
-
-    # render the dispute form template
-    return render_template("dispute_new.html", user=current_user, user_tasks=user_tasks)
-
-#admin disputes page
-@app.route("/admin/disputes")
-@admin_required
-def admin_disputes():
-    # show all disputes to admins ordered with newest first
-    all_disputes = Dispute.query.order_by(Dispute.created_at.desc()).all()
-    return render_template("admin_disputes.html", disputes=all_disputes)
-
-# admin dispute detail page
-@app.route("/admin/disputes/<int:dispute_id>", methods=["GET", "POST"])
-@admin_required
-def admin_dispute_detail(dispute_id: int):
-    # show a single dispute to allow admin to review and update its status
-    d = Dispute.query.get_or_404(dispute_id)
-    if request.method == "POST":
-        action = (request.form.get("action") or "").strip()
-        note = (request.form.get("resolution_note") or "").strip()
-        # handle resolving the dispute
-        if action == "resolve":
-            d.status = "resolved"
-            d.resolved_at = datetime.utcnow()
-            d.resolved_by_admin_id = current_user.id
-            d.resolution_note = note
-            db.session.commit()
-            flash("Dispute resolved.", "success")
-            return redirect(url_for("admin_disputes"))
-        # handle marking the dispute as in review
-        elif action == "in_review":
-            d.status = "in_review"
-            db.session.commit()
-            flash("Dispute marked in review.", "info")
-            return redirect(url_for("admin_disputes"))
-    # render the detailed view of a single dispute
-    return render_template("admin_disputes_detail.html", d=d)
-
-# admin view of all students
-@app.route("/admin/users")
-@admin_required
-def admin_users():
-    # show all student accounts so the admin can review them
-    students = User.query.filter_by(role="student").order_by(User.id.asc()).all()
-    return render_template("admin_users.html", students=students)
-
-# admin view of users details
-@app.route("/admin/users/<int:user_id>")
-@admin_required
-def admin_user_detail(user_id: int):
-    # show full details for a single student account
-    student = User.query.get_or_404(user_id)
-    if student.role != "student":
-        flash("This user is not a student account.", "danger")
-        return redirect(url_for("admin_users"))
-    return render_template("admin_user_detail.html", student=student)
-
-# ability to verify and unverify student accounts
-@app.route("/admin/users/<int:user_id>/verify", methods=["POST"])
-@admin_required
-def admin_verify_user(user_id: int):
-    # mark a student account as verified
-    student = User.query.get_or_404(user_id)
-    if student.role != "student":
-        flash("Only student accounts can be verified here.", "danger")
-        return redirect(url_for("admin_users"))
-    student.verified = True
-    db.session.commit()
-    flash("Student verified.", "success")
-    return redirect(request.referrer or url_for("admin_users"))
-
-# ability to verify and unverify student accounts
-@app.route("/admin/users/<int:user_id>/unverify", methods=["POST"])
-@admin_required
-def admin_unverify_user(user_id: int):
-    # remove verification flag from a student account
-    student = User.query.get_or_404(user_id)
-    if student.role != "student":
-        flash("Only student accounts can be updated here.", "danger")
-        return redirect(url_for("admin_users"))
-    student.verified = False
-    db.session.commit()
-    flash("Verification removed.", "success")
-    return redirect(request.referrer or url_for("admin_users"))
-
-# ability to delete student accounts
-@app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
-@admin_required
-def admin_delete_user(user_id: int):
-    # Only admin users can delete accounts
-    student = User.query.get_or_404(user_id)
-    # ensure we only delete student accounts from this view
-    if student.role != "student":
-        flash("Only student accounts can be deleted from this page.", "danger")
-        return redirect(url_for("admin_users"))
-    # clean up related applications before deleting the user
-    Application.query.filter_by(student_id=student.id).delete()
-    # delete the user row
-    db.session.delete(student)
-    db.session.commit()
-    flash("Student account deleted.", "success")
-    return redirect(url_for("admin_users"))
-
-#browse tasks page
-@app.route("/tasks/browse", methods=["GET"])
-@login_required
-def browse_tasks():
-    # only allow student users to browse and filter tasks
+def add_lecturer_reference():
+    """Add lecturer reference to profile"""
     if current_user.role != "student":
-        flash("Only students can browse tasks.", "danger")
-        return redirect(url_for("dashboard"))
-    # start with a base query that returns all tasks
-    query = Task.query
-    # read filter values from query string parameters ?skill=...&max_hours=...
-    skill = (request.args.get("skill") or "").strip()
-    max_hours_raw = (request.args.get("max_hours") or "").strip()
-    # if a skill filter is provided, match it against task title or requirements using case-insensitive LIKE
-    if skill:
-        like_pattern = f"%{skill}%"
+        abort(403)
+
+    lecturer_name = request.form.get("lecturer_name", "").strip()
+
+    if not lecturer_name:
+        flash("Lecturer name is required.", "danger")
+        return redirect(url_for("profile"))
+
+    reference = LecturerReference(
+        student_id=current_user.id,
+        lecturer_name=lecturer_name
+    )
+    db.session.add(reference)
+    db.session.commit()
+
+    flash("Lecturer reference added!", "success")
+    return redirect(url_for("profile"))
+
+# ============================================================================
+# SECTION 10: ITERATION 5 ROUTES - Portfolio, Search, Payments
+# ============================================================================
+
+# ============================================================================
+# 10.1 Student Public Portfolio
+# ============================================================================
+
+@app.route("/portfolio/<int:student_id>")
+def portfolio(student_id):
+    """
+    PUBLIC student portfolio page.
+
+    Access: Anyone (no login required)
+    URL: /portfolio/<student_id>
+
+    Shows:
+    - Student profile with verification badge
+    - Trust score, completed tasks count, average rating
+    - Skills as visual tags
+    - Portfolio media files
+    - Lecturer references
+    - Reviews from companies
+    """
+    # Get student
+    student = db.session.get(User, student_id)
+
+    # Verify student exists and is student role
+    if not student or student.role != "student":
+        abort(404)
+
+    # Get completed applications (approved work)
+    completed_applications = Application.query.filter(
+        Application.student_id == student_id,
+        Application.status == "completed",
+        Application.review_status == "approved"
+    ).all()
+
+    # Get completed tasks
+    completed_tasks = [app_obj.task for app_obj in completed_applications]
+    completed_tasks_count = len(completed_applications)
+
+    # Calculate average rating
+    reviews = Review.query.filter(
+        Review.ratee_user_id == student_id,
+        Review.is_hidden == False
+    ).all()
+
+    average_rating = (
+        sum(r.rating for r in reviews) / len(reviews) if reviews else 0.0
+    )
+
+    # Render portfolio template
+    return render_template(
+        "portfolio.html",
+        student=student,
+        completed_tasks=completed_tasks,
+        completed_tasks_count=completed_tasks_count,
+        average_rating=average_rating,
+        reviews=reviews
+    )
+
+# ============================================================================
+# 10.2 Company Search & Filter Students
+# ============================================================================
+
+@app.route("/company/search-students")
+@login_required
+def company_search_students():
+    """
+    Company interface to search and filter students.
+
+    Access: Company users only
+    URL: /company/search-students
+
+    Query Parameters:
+    - search: Name/email search term
+    - skills: Comma-separated skills
+    - min_trust_score: Minimum trust score (0-100)
+    - verified: 'yes' for verified only
+    - sort_by: trust_score, rating, completed_tasks, name
+
+    Features:
+    - Text search (case-insensitive)
+    - Multi-criteria filtering
+    - Sorting options
+    - Student preview cards
+    - View portfolio button
+    - Post task button
+    - CSV export
+    """
+    # Check if user is company
+    if not current_user.is_company:
+        abort(403)
+
+    # Get filter parameters
+    search = request.args.get("search", "").strip()
+    skills = request.args.get("skills", "").strip()
+    min_trust_score = int(request.args.get("min_trust_score", 0))
+    verified_only = request.args.get("verified") == "yes"
+    sort_by = request.args.get("sort_by", "trust_score")
+
+    # Build query
+    query = User.query.filter_by(role="student")
+
+    # Filter by search term (name or email)
+    if search:
         query = query.filter(
             db.or_(
-                Task.title.ilike(like_pattern),
-                Task.requirements.ilike(like_pattern),
+                func.lower(User.name).contains(func.lower(search)),
+                func.lower(User.email).contains(func.lower(search))
             )
         )
-    # if a maximum timeframe (estimated hours) is provided, filter tasks by that upper bound
-    max_hours = None
-    if max_hours_raw:
-        try:
-            max_hours = int(max_hours_raw)
-        except ValueError:
-            max_hours = None
-    if max_hours is not None:
-        query = query.filter(Task.estimated_hours != None).filter(Task.estimated_hours <= max_hours)
-    # execute the query and order results by id for a stable view
-    tasks = query.order_by(Task.id.asc()).all()
-    # render the browse template and pass current filters and the list of tasks
-    return render_template(
-        "browse_tasks.html",
-        user=current_user,
-        tasks=tasks,
-        skill=skill,
-        max_hours=max_hours_raw,
-    )
 
-
-
-# Iteration 3
-
-@app.route('/student/apply/<int:task_id>', methods=['POST'])
-@login_required
-def apply_task(task_id):
-    if current_user.role != 'student':
-        os.abort(403)
-
-    # Check if already applied
-    exists = Application.query.filter_by(task_id=task_id, student_id=current_user.id).first()
-    if not exists:
-        appn = Application(task_id=task_id, student_id=current_user.id)
-        db.session.add(appn)
-        db.session.commit()
-        flash("Applied successfully", "success")
-    else:
-        flash("You have already applied for this task.", "info")
-
-    return redirect(url_for('dashboard'))
-
-
-
-
-@app.route("/company/application/<int:application_id>/select")
-@login_required
-def select_candidate(application_id):
-    if current_user.role != "company":
-        flash("Company access only.", "danger")
-        return redirect(url_for("dashboard"))
-
-    task_id = db.session.execute(
-        text("SELECT task_id FROM applications WHERE id = :id"),
-        {"id": application_id}
-    ).scalar()
-
-    db.session.execute(
-        text("""
-        UPDATE applications
-        SET status = 'rejected'
-        WHERE task_id = :task_id
-        """),
-        {"task_id": task_id}
-    )
-
-    db.session.execute(
-        text("""
-        UPDATE applications
-        SET status = 'accepted'
-        WHERE id = :id
-        """),
-        {"id": application_id}
-    )
-
-    db.session.commit()
-
-    flash("Candidate selected.", "success")
-    return redirect(url_for("view_applicants", task_id=task_id))
-
-
-
-@app.route("/company/task/<int:task_id>/applicants")
-@login_required
-def company_view_applicants(task_id):
-    if current_user.role != "company":
-        os.abort(403)
-
-    # Ensure task belongs to company
-    task = Task.query.filter_by(
-        id=task_id,
-        company_id=current_user.id
-    ).first_or_404()
-
-    # Get applicants with public details
-    applicants = (
-        db.session.query(
-            Application.id.label("application_id"),
-            User.name,
-            User.skills,
-            User.verified,
-            Application.status
+    # Filter by skills
+    if skills:
+        skill_list = [s.strip().lower() for s in skills.split(",")]
+        query = query.filter(
+            db.or_(*[
+                func.lower(User.skills).contains(skill)
+                for skill in skill_list
+            ])
         )
-        .join(User, User.id == Application.student_id)
-        .filter(Application.task_id == task_id)
+
+    # Filter by trust score
+    if min_trust_score > 0:
+        query = query.filter(User.trust_score >= min_trust_score)
+
+    # Filter by verification status
+    if verified_only:
+        query = query.filter_by(verified=True)
+
+    # Sort results
+    if sort_by == "rating":
+        query = query.outerjoin(
+            Review,
+            Review.ratee_user_id == User.id
+        ).group_by(User.id).order_by(
+            func.avg(Review.rating).desc()
+        )
+    elif sort_by == "completed_tasks":
+        query = query.outerjoin(
+            Application,
+            (Application.student_id == User.id) &
+            (Application.status == "completed")
+        ).group_by(User.id).order_by(
+            func.count(Application.id).desc()
+        )
+    elif sort_by == "name":
+        query = query.order_by(User.name)
+    else:  # trust_score (default)
+        query = query.order_by(User.trust_score.desc())
+
+    # Execute query
+    students = query.all()
+
+    # Calculate student metrics
+    student_ratings = {}
+    student_completed_tasks = {}
+
+    for student in students:
+        # Calculate average rating
+        reviews = Review.query.filter(
+            Review.ratee_user_id == student.id,
+            Review.is_hidden == False
+        ).all()
+        student_ratings[student.id] = (
+            sum(r.rating for r in reviews) / len(reviews) if reviews else 0
+        )
+
+        # Count completed tasks
+        completed = Application.query.filter(
+            Application.student_id == student.id,
+            Application.status == "completed",
+            Application.review_status == "approved"
+        ).count()
+        student_completed_tasks[student.id] = completed
+
+    return render_template(
+        "company_search_students.html",
+        students=students,
+        student_ratings=student_ratings,
+        student_completed_tasks=student_completed_tasks
+    )
+
+# ============================================================================
+# SECTION 11: COMPANY ROUTES
+# ============================================================================
+
+# ============================================================================
+# 11.1 Company Dashboard
+# ============================================================================
+
+@app.route("/company")
+@login_required
+def company_dashboard():
+    """
+    Company dashboard showing:
+    - Tasks awaiting selection
+    - Active tasks with applicants
+    - Task overview with quick actions
+    - New search button for finding students
+    """
+    if current_user.role != "company":
+        abort(403)
+
+    # Get company's tasks by status
+    awaiting_selection = Task.query.filter(
+        Task.company_id == current_user.id,
+        Task.status == "open"
+    ).all()
+
+    active = Task.query.filter(
+        Task.company_id == current_user.id,
+        Task.status == "in_progress"
+    ).all()
+
+    # Get recent notifications
+    notifications = (
+        Notification.query
+        .filter(Notification.user_id == current_user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(10)
         .all()
     )
 
     return render_template(
-        "company_applicants.html",
-        task=task,
-        applicants=applicants
+        "company_dashboard.html",
+        awaiting_selection=awaiting_selection,
+        active=active,
+        notifications=notifications,
+        search_students_url=url_for('company_search_students')
     )
 
+# ============================================================================
+# 11.2 Add Task
+# ============================================================================
 
-@app.route("/company/select/<int:application_id>", methods=["POST"])
+@app.route("/company/add-task", methods=["GET", "POST"])
 @login_required
-def process_select_candidate(application_id):
+def add_task():
+    """
+    Create new task.
+
+    POST Parameters:
+    - title: Task title
+    - description: Task description
+    - requirements: Task requirements
+    - estimated_hours: Estimated duration
+    - tags: Skill tags (comma-separated)
+    - payment_type: 'fixed' or 'hourly'
+    - fixed_price: Fixed price amount
+    - hourly_rate: Hourly rate
+    """
     if current_user.role != "company":
-        os.abort(403)
+        abort(403)
 
-    application = (
-        db.session.query(Application)
-        .join(Task, Task.id == Application.task_id)
-        .filter(
-            Application.id == application_id,
-            Task.company_id == current_user.id
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        requirements = request.form.get("requirements", "").strip()
+        estimated_hours = request.form.get("estimated_hours", "")
+        tags = request.form.get("tags", "").strip()
+        payment_type = request.form.get("payment_type", "fixed")
+        fixed_price = request.form.get("fixed_price", "")
+        hourly_rate = request.form.get("hourly_rate", "")
+
+        if not title or not description:
+            flash("Title and description are required.", "danger")
+            return render_template("add_task.html")
+
+        # Create task
+        task = Task(
+            title=title,
+            description=description,
+            requirements=requirements or None,
+            estimated_hours=int(estimated_hours) if estimated_hours else None,
+            tags=tags,
+            company_id=current_user.id,
+            payment_type=payment_type,
+            fixed_price=float(fixed_price) if fixed_price else None,
+            hourly_rate=float(hourly_rate) if hourly_rate else None
         )
-        .first_or_404()
+
+        db.session.add(task)
+        db.session.commit()
+
+        # Send notifications to matching students
+        try:
+            if tags:
+                task_tags = [tag.strip().lower() for tag in tags.split(",")]
+                for student in User.query.filter_by(role="student").all():
+                    if student.skills:
+                        student_skills = [s.strip().lower() for s in student.skills.split(",")]
+                        if any(skill in student_skills for skill in task_tags):
+                            send_task_posted_notification(task, current_user)
+        except Exception as e:
+            print(f"[Email] Failed to send task notifications: {e}")
+
+        flash("Task posted successfully!", "success")
+        return redirect(url_for("company_dashboard"))
+
+    return render_template("add_task.html")
+
+# ============================================================================
+# 11.3 Edit Task
+# ============================================================================
+
+@app.route("/company/task/<int:task_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_task(task_id):
+    """Edit existing task"""
+    if current_user.role != "company":
+        abort(403)
+
+    task = db.session.get(Task, task_id)
+    if not task or task.company_id != current_user.id:
+        abort(404)
+
+    if request.method == "POST":
+        task.title = request.form.get("title", task.title)
+        task.description = request.form.get("description", task.description)
+        task.requirements = request.form.get("requirements", task.requirements)
+        task.tags = request.form.get("tags", task.tags)
+        db.session.commit()
+        flash("Task updated successfully!", "success")
+        return redirect(url_for("company_dashboard"))
+
+    return render_template("edit_task.html", task=task)
+
+# ============================================================================
+# 11.4 Company Applicants
+# ============================================================================
+
+@app.route("/company/applicants")
+@login_required
+def company_applicants():
+    """
+    View applicants for company's tasks.
+
+    Shows all applications sorted by task.
+    Allows reviewing, selecting, rejecting applicants.
+    """
+    if current_user.role != "company":
+        abort(403)
+
+    # Get all applications for company's tasks
+    applications = Application.query.join(
+        Task,
+        Application.task_id == Task.id
+    ).filter(Task.company_id == current_user.id).all()
+
+    return render_template("company_applicants.html", applications=applications)
+
+# ============================================================================
+# 11.5 Accept Applicant
+# ============================================================================
+
+@app.route("/company/application/<int:app_id>/accept", methods=["POST"])
+@login_required
+def accept_application(app_id):
+    """
+    Accept application and initialize payment.
+
+    Creates Stripe payment intent and sends acceptance email to student.
+    """
+    if current_user.role != "company":
+        abort(403)
+
+    application = db.session.get(Application, app_id)
+    if not application or application.task.company_id != current_user.id:
+        abort(403)
+
+    application.selected = True
+    application.status = "in_progress"
+
+    # Initialize payment (Iteration 5)
+    if not application.payment_intent_id and escrow_manager:
+        try:
+            amount_cents = int(application.task.fixed_price * 100) if application.task.fixed_price else 0
+
+            payment_intent = escrow_manager.create_payment_intent(
+                company_id=application.task.company_id,
+                student_id=application.student_id,
+                application_id=application.id,
+                amount_cents=amount_cents,
+                task_id=application.task_id,
+                task_title=application.task.title
+            )
+
+            application.payment_intent_id = payment_intent['id']
+            application.payment_status = "pending"
+
+            # Log payment event
+            log_entry = PaymentTransaction(
+                application_id=application.id,
+                payment_intent_id=payment_intent['id'],
+                status="pending",
+                event_type="payment_intent_created",
+                amount_cents=amount_cents,
+                details=f"Payment intent created for {application.task.title}"
+            )
+            db.session.add(log_entry)
+
+        except PaymentError as e:
+            flash(f"Payment setup error: {e.message}", "warning")
+
+    # Send acceptance email
+    try:
+        send_application_accepted_notification(
+            application,
+            application.task,
+            application.student
+        )
+    except Exception as e:
+        print(f"[Email] Failed to send acceptance notification: {e}")
+
+    # Create notification
+    notif = Notification(
+        user_id=application.student_id,
+        task_id=application.task_id,
+        message=f"Congratulations! You were selected for: {application.task.title}"
     )
+    db.session.add(notif)
 
-    # Reject all other applications
-    Application.query.filter(
-        Application.task_id == application.task_id,
-        Application.id != application.id
-    ).update({"status": "rejected"})
-
-    # Accept selected student
-    application.status = "accepted"
-
-    # Assign task
-    task = Task.query.get(application.task_id)
-    task.assigned_student_id = application.student_id
-    task.status = "assigned"
+    # Publish real-time event
+    broker.publish(application.student_id, {
+        "type": "application_accepted",
+        "task_title": application.task.title,
+        "task_id": application.task_id
+    })
 
     db.session.commit()
+    flash("Application accepted!", "success")
+    return redirect(request.referrer or url_for("company_applicants"))
 
-    flash("Candidate selected successfully.", "success")
-    return redirect(
-        url_for("company_view_applicants", task_id=task.id)
-    )
+# ============================================================================
+# 11.6 Reject Application
+# ============================================================================
 
-
-@app.route('/student/notifications')
+@app.route("/company/application/<int:app_id>/reject", methods=["POST"])
 @login_required
-def student_notifications():
-    if current_user.role != 'student':
-        os.abort(403)
+def reject_application(app_id):
+    """
+    Reject application and refund payment if applicable.
 
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute("""
-        SELECT * FROM notifications
-        WHERE user_id = %s
-        ORDER BY created_at DESC
-    """, (current_user.id,))
-    notifications = cursor.fetchall()
-    cursor.close()
+    Refunds payment from escrow and sends rejection email to student.
+    """
+    if current_user.role != "company":
+        abort(403)
+
+    application = db.session.get(Application, app_id)
+    if not application or application.task.company_id != current_user.id:
+        abort(403)
+
+    reason = request.form.get("reason", "")
+
+    # Refund payment if authorized (Iteration 5)
+    try:
+        if application.payment_intent_id and application.payment_status == "authorized":
+            refund_result = escrow_manager.refund_payment(
+                payment_intent_id=application.payment_intent_id,
+                application_id=application.id,
+                reason="requested_by_customer"
+            )
+
+            application.payment_status = "refunded"
+
+            # Log refund
+            log_entry = PaymentTransaction(
+                application_id=application.id,
+                payment_intent_id=application.payment_intent_id,
+                status="refunded",
+                event_type="payment_refunded",
+                amount_cents=int(application.task.fixed_price * 100) if application.task.fixed_price else 0,
+                details="Application rejected - payment refunded"
+            )
+            db.session.add(log_entry)
+
+    except PaymentError as e:
+        flash(f"Warning: Payment refund failed. Manual intervention may be needed.", "warning")
+
+    # Mark as rejected
+    application.status = "rejected"
+    application.review_status = "rejected"
+
+    # Send rejection email
+    try:
+        send_application_rejected_notification(
+            application,
+            application.task,
+            application.student,
+            reason=reason
+        )
+    except Exception as e:
+        print(f"[Email] Failed to send rejection notification: {e}")
+
+    # Create notification
+    notif = Notification(
+        user_id=application.student_id,
+        task_id=application.task_id,
+        message=f"Application status: {application.task.title}"
+    )
+    db.session.add(notif)
+
+    db.session.commit()
+    flash("Application rejected", "info")
+    return redirect(request.referrer or url_for("company_applicants"))
+
+# ============================================================================
+# 11.7 Approve Submitted Work
+# ============================================================================
+
+@app.route("/company/application/<int:app_id>/approve", methods=["POST"])
+@login_required
+def approve_application(app_id):
+    """
+    Approve submitted work and capture payment.
+
+    Marks work as completed, captures payment from escrow,
+    and sends approval email with payment details to student.
+    """
+    if current_user.role != "company":
+        abort(403)
+
+    application = db.session.get(Application, app_id)
+    if not application or application.task.company_id != current_user.id:
+        abort(403)
+
+    # Capture payment (Iteration 5)
+    try:
+        if application.payment_intent_id and application.payment_status != "captured":
+            capture_result = escrow_manager.capture_payment(
+                payment_intent_id=application.payment_intent_id,
+                application_id=application.id
+            )
+
+            application.payment_status = "captured"
+            application.payment_captured_at = datetime.utcnow()
+
+            # Log payment capture
+            log_entry = PaymentTransaction(
+                application_id=application.id,
+                payment_intent_id=application.payment_intent_id,
+                status="captured",
+                event_type="payment_captured",
+                amount_cents=int(application.task.fixed_price * 100) if application.task.fixed_price else 0,
+                details="Payment captured and released to student"
+            )
+            db.session.add(log_entry)
+
+    except PaymentError as e:
+        flash(f"Payment capture failed: {e.message}. Work approved but payment is pending.", "warning")
+
+    # Mark as completed
+    application.completed_at = datetime.utcnow()
+    application.status = "completed"
+    application.review_status = "approved"
+
+    # Send approval email
+    try:
+        send_work_approved_notification(
+            application,
+            application.task,
+            application.student
+        )
+    except Exception as e:
+        print(f"[Email] Failed to send approval notification: {e}")
+
+    # Create notification
+    notif = Notification(
+        user_id=application.student_id,
+        task_id=application.task_id,
+        message=f"Your work was approved for: {application.task.title} - Payment released!"
+    )
+    db.session.add(notif)
+
+    # Publish real-time event
+    broker.publish(application.student_id, {
+        "type": "work_approved",
+        "task_title": application.task.title,
+        "amount": application.task.fixed_price
+    })
+
+    db.session.commit()
+    flash("Work approved and payment released!", "success")
+    return redirect(request.referrer or url_for("company_applicants"))
+
+# ============================================================================
+# SECTION 12: ADMIN ROUTES
+# ============================================================================
+
+# ============================================================================
+# 12.1 Admin Home
+# ============================================================================
+
+@app.route("/admin")
+@login_required
+def admin_home():
+    """
+    Admin dashboard showing:
+    - Unverified students
+    - Open disputes
+    - System statistics
+    """
+    if not getattr(current_user, "is_admin", False):
+        abort(403)
+
+    unverified = User.query.filter_by(role="student", verified=False).all()
+    open_disputes = Dispute.query.filter(
+        Dispute.status != "resolved"
+    ).order_by(Dispute.created_at.desc()).all()
+
+    # Statistics
+    students_q = User.query.filter_by(role="student")
+    total_students = students_q.count()
+    verified_students = students_q.filter_by(verified=True).count()
+    unverified_students = students_q.filter_by(verified=False).count()
+
+    total_disputes = Dispute.query.count()
+    open_disputes_count = Dispute.query.filter(
+        Dispute.status != "resolved"
+    ).count()
 
     return render_template(
-        'student_notifications.html',
-        notifications=notifications
+        "admin_home.html",
+        unverified=unverified,
+        open_disputes=open_disputes,
+        total_students=total_students,
+        verified_students=verified_students,
+        unverified_students=unverified_students,
+        total_disputes=total_disputes,
+        open_disputes_count=open_disputes_count
     )
 
+# ============================================================================
+# SECTION 13: ERROR HANDLERS
+# ============================================================================
+
+@app.errorhandler(404)
+def page_not_found(error):
+    """Handle 404 errors"""
+    return render_template("404.html"), 404
+
+@app.errorhandler(403)
+def forbidden(error):
+    """Handle 403 forbidden"""
+    return render_template("403.html"), 403
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 server errors"""
+    db.session.rollback()
+    return render_template("500.html"), 500
+
+# ============================================================================
+# SECTION 14: MAIN ENTRY POINT
+# ============================================================================
+
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
-
-
-
-
+    """
+    Run Flask development server.
+    
+    For production, use a WSGI server like Gunicorn:
+    $ gunicorn app:app
+    """
+    app.run(debug=True, host="0.0.0.0", port=5000)

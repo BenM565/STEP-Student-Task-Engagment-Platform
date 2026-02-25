@@ -1,76 +1,147 @@
-<!--code layout is from chatgpt-->
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
 {% block content %}
 
+<h2>My Profile</h2>
 
-{# Allow users to update profile fields and optionally change password
+{% if not edit %}
+  <p><strong>Name:</strong> {{ user.name }}</p>
+  <p><strong>Email:</strong> {{ user.email }}</p>
+  <p><strong>Role:</strong> {{ user.role }}</p>
 
-{#Student-only fields are wrapped in a role check#}
-{# Email is displayed read-only per current backend behavior#}
+  <p><strong>Skills:</strong><br>{{ user.skills }}</p>
+  <p><strong>Grades:</strong><br>{{ user.grades }}</p>
 
+  <div class="mt-3">
+    <h4 class="mb-2">Projects</h4>
+    <p class="text-muted">{{ user.projects }}</p>
 
-<div class="row justify-content-center">
-  <div class="col-lg-7">
-    <div class="card shadow-sm">
-      <div class="card-body p-4">
-        <h5 class="mb-4">
-          {% if user.role == 'company' %}
-            Company profile
-          {% else %}
-            Edit profile
-          {% endif %}
-        </h5>
-
-        <form method="post" class="row g-3">
-         {# Name (both roles)#}
-          <div class="col-md-6">
-            <label class="form-label">Name</label>
-            <input name="name" class="form-control" value="{{ user.name or '' }}" required>
-          </div>
-
-          {# Email (readonly, both roles). Change flow is intentionally not provided here.#}
-          <div class="col-md-6">
-            <label class="form-label">Email</label>
-            <input class="form-control" value="{{ user.email }}" disabled>
-            <div class="form-text">Email cannot be changed here.</div>
-          </div>
-
-          {# Student-only fields. Backend will save these only for student users#}
-          {% if user.role == 'student' %}
-            <div class="col-12">
-              <label class="form-label">Skills</label>
-              <input name="skills" class="form-control" value="{{ user.skills or '' }}">
+    {% set media_list = user.project_media or [] %}
+    {% if media_list|length > 0 %}
+      <div class="row g-3">
+        {% for media in media_list %}
+          <div class="col-12 col-sm-6 col-md-4">
+            <div class="card h-100">
+              <div class="card-body">
+                <div class="small text-muted mb-2">{{ media.title or "Project media" }}</div>
+                <a href="{{ url_for('static', filename='uploads/' + media.filename) }}" target="_blank" class="btn btn-outline-secondary btn-sm">View</a>
+              </div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label">Grades</label>
-              <input name="grades" class="form-control" value="{{ user.grades or '' }}">
-            </div>
-            <div class="col-12">
-              <label class="form-label">Projects</label>
-              <textarea name="projects" class="form-control" rows="2">{{ user.projects or '' }}</textarea>
-            </div>
-            <div class="col-12">
-              <label class="form-label">References</label>
-              <textarea name="references" class="form-control" rows="2">{{ user.references or '' }}</textarea>
-            </div>
-          {% endif %}
-
-        {# Optional password change (both roles). Leave blank to keep current password#}
-          <div class="col-12">
-            <label class="form-label">Change password (optional)</label>
-            <input name="password" type="password" class="form-control" placeholder="Leave blank to keep current password">
           </div>
-
-          {# Save / Cancel actions#}
-          <div class="col-12 d-flex gap-2">
-            <button class="btn btn-primary">Save changes</button>
-            <a class="btn btn-outline-secondary" href="{{ url_for('dashboard') }}">Cancel</a>
-          </div>
-        </form>
-
+        {% endfor %}
       </div>
-    </div>
+    {% else %}
+      <p class="text-muted">No project media uploaded yet.</p>
+    {% endif %}
+
+    {% if current_user.id == user.id and current_user.role == "student" %}
+    <form class="mt-3" method="post" action="{{ url_for('student_upload_project_media') }}" enctype="multipart/form-data">
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-5">
+          <label class="form-label">Title (optional)</label>
+          <input type="text" name="title" class="form-control" placeholder="e.g. Portfolio, Demo video">
+        </div>
+        <div class="col-sm-5">
+          <label class="form-label">Upload media</label>
+          <input type="file" name="file" class="form-control" required>
+        </div>
+        <div class="col-sm-2 d-grid">
+          <button class="btn btn-primary">Upload</button>
+        </div>
+      </div>
+    </form>
+    {% endif %}
   </div>
-</div>
+
+  <div class="mt-4">
+    <h4 class="mb-2">Lecturer References</h4>
+    {% set refs = user.lecturer_references or [] %}
+    {% if refs|length > 0 %}
+      <ul class="list-group">
+        {% for ref in refs %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            {{ ref.lecturer_name }}
+            <span class="badge bg-primary">Reference</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted">No lecturer references yet.</p>
+    {% endif %}
+
+    {% if current_user.id == user.id and current_user.role == "student" %}
+    <form class="mt-3" method="post" action="{{ url_for('add_lecturer_reference') }}">
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-9">
+          <label class="form-label">Lecturer Name</label>
+          <input type="text" name="lecturer_name" class="form-control" placeholder="e.g. Dr. Jane Smith" required>
+        </div>
+        <div class="col-sm-3 d-grid">
+          <button class="btn btn-outline-secondary">Add</button>
+        </div>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="mt-4">
+    <a href="{{ url_for('profile', edit=1) }}" class="btn btn-primary">
+      Edit Profile
+    </a>
+    {% if current_user.id == user.id and current_user.role == "student" %}
+      <a href="{{ url_for('dispute_new') }}" class="btn btn-outline-danger ms-2">
+        Raise a Dispute
+      </a>
+    {% endif %}
+  </div>
+
+{% for task in user.tasks %}
+    <div class="task-box">
+        <h4>{{ task.title }}</h4>
+        <p>{{ task.description }}</p>
+        <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning">Edit Task</a>
+    </div>
+{% endfor %}
+
+
+{% else %}
+
+  <form method="POST">
+    <div>
+      <label>Name</label>
+      <input type="text" name="name" value="{{ user.name }}" required>
+    </div>
+
+    <div>
+      <label>Email</label>
+      <input type="email" name="email" value="{{ user.email }}" required>
+    </div>
+
+    <div>
+      <label>Skills</label>
+      <textarea name="skills">{{ user.skills }}</textarea>
+    </div>
+
+    <div>
+      <label>Grades</label>
+      <textarea name="grades">{{ user.grades }}</textarea>
+    </div>
+
+    <div>
+      <label>Projects</label>
+      <textarea name="projects">{{ user.projects }}</textarea>
+    </div>
+
+    <button type="submit" class="btn btn-success">Save</button>
+    <a href="{{ url_for('profile') }}" class="btn btn-secondary">Cancel</a>
+  </form>
+
+{% endif %}
+
 {% endblock %}

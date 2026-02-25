@@ -1,0 +1,99 @@
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
+{% extends "base.html" %}
+{% block page_title %}Students{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1">Students in Your University</h2>
+      <p class="text-muted mb-0">View active and past work for your students. Access is limited to your institution.</p>
+    </div>
+  </div>
+
+  {% if students and students|length > 0 %}
+    {% for s in students %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="h5 mb-1"><a href="{{ url_for('university_student_detail', user_id=s.id) }}" class="text-decoration-none">{{ s.name }}</a></div>
+              <div class="text-muted small">{{ s.email }}</div>
+              {% if s.department %}<div class="text-muted small">Dept: {{ s.department }}</div>{% endif %}
+            </div>
+            <div class="text-end">
+              {% set count, avg = user_rating_stats(s.id) %}
+              <div class="small text-muted">Reviews: {{ count }}</div>
+              <div class="d-inline-flex">
+                {% for i in range(1,6) %}
+                  {% if i <= avg|round(0, 'floor') %}
+                    <i class="bi bi-star-fill text-warning"></i>
+                  {% elif i - avg < 1 %}
+                    <i class="bi bi-star-half text-warning"></i>
+                  {% else %}
+                    <i class="bi bi-star text-warning"></i>
+                  {% endif %}
+                {% endfor %}
+              </div>
+              <div class="fw-semibold">{{ '%.2f'|format(avg or 0) }}</div>
+            </div>
+          </div>
+
+          {% set packs = apps_by_student.get(s.id) or {} %}
+          <div class="row mt-3">
+            <div class="col-md-6">
+              <div class="subtitle mb-2">Active</div>
+              {% set active = packs.get('active') or [] %}
+              {% if active %}
+                <ul class="list-unstyled mb-0">
+                  {% for a in active %}
+                    <li class="mb-2">
+                      <div class="d-flex justify-content-between">
+                        <div>
+                          <div class="fw-semibold">{{ a.task.title }}</div>
+                          <div class="small text-muted">{{ a.task.company.name if a.task.company else 'N/A' }}</div>
+                        </div>
+                        <span class="badge bg-success">{{ a.status|capitalize }}</span>
+                      </div>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <div class="text-muted small">No active work</div>
+              {% endif %}
+            </div>
+            <div class="col-md-6">
+              <div class="subtitle mb-2">Past</div>
+              {% set past = packs.get('past') or [] %}
+              {% if past %}
+                <ul class="list-unstyled mb-0">
+                  {% for a in past %}
+                    <li class="mb-2">
+                      <div class="d-flex justify-content-between">
+                        <div>
+                          <div class="fw-semibold">{{ a.task.title }}</div>
+                          <div class="small text-muted">{{ a.completed_at and ('Completed ' ~ a.completed_at.strftime('%Y-%m-%d')) }}</div>
+                        </div>
+                        <span class="badge bg-secondary">Completed</span>
+                      </div>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <div class="text-muted small">No past work</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="alert alert-info">No students found for your university.</div>
+  {% endif %}
+</div>
+{% endblock %}

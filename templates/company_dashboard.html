@@ -1,10 +1,311 @@
-<a href="{{ url_for('company_view_applicants', task_id=task.id) }}"
-   class="btn btn-outline-primary btn-sm">
-   View Applicants
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
+{% extends "base.html" %}
+
+{% block page_title %}Company Dashboard{% endblock %}
+
+{% block content %}
+<div class="container company-dashboard">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1">My Tasks</h2>
+      <p class="text-muted mb-0">Manage your postings, review applicants, and update details.</p>
+    </div>
+    <a href="{{ url_for('add_task') }}" class="btn btn-primary">+ Create Task</a>
+  </div>
+<a href="/company/students" class="btn btn-outline-primary">
+    View Previous Students
 </a>
-{% if application_count > 0 %}
-  <a href="{{ url_for('company_view_applicants', task_id=task.id) }}"
-     class="btn btn-outline-primary btn-sm mt-2">
-     View Applicants
-  </a>
-{% endif %}
+
+
+  <!-- Tabs: Overview | Notifications -->
+  <ul class="nav nav-tabs" id="companyDashTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">Overview</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="notifications-tab" data-bs-toggle="tab" data-bs-target="#notifications" type="button" role="tab" aria-controls="notifications" aria-selected="false">
+        Notifications
+        {% if company_unread_count and company_unread_count > 0 %}
+          <span class="badge bg-danger ms-1">{{ company_unread_count }}</span>
+        {% endif %}
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content pt-3">
+    <!-- Overview Tab -->
+    <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+      <!-- Quick Actions -->
+      <div class="quick-actions">
+        <a class="quick-card" href="{{ url_for('add_task') }}">
+          <div class="icon-bubble"><i class="bi bi-plus-circle"></i></div>
+          <div>
+            <div class="label">Post Task</div>
+            <div class="sublabel">Create a new opportunity</div>
+          </div>
+        </a>
+        <a class="quick-card" href="{{ url_for('student_dashboard') }}">
+          <div class="icon-bubble"><i class="bi bi-exclamation-triangle"></i></div>
+          <div>
+            <div class="label">Raise Dispute</div>
+            <div class="sublabel">Report an issue quickly</div>
+          </div>
+        </a>
+        <a class="quick-card" href="{{ url_for('profile') }}">
+          <div class="icon-bubble"><i class="bi bi-person"></i></div>
+          <div>
+            <div class="label">Profile</div>
+            <div class="sublabel">Update your company info</div>
+          </div>
+        </a>
+      </div>
+
+      <!-- Awaiting Selection -->
+  <div class="modal fade" id="companyAcceptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-body text-center p-4">
+          <div class="display-4 mb-2"><i class="bi bi-check-circle-fill text-success"></i></div>
+          <h5 class="mb-1">Student Accepted</h5>
+          <p class="text-muted mb-0" id="companyAcceptModalMsg"></p>
+        </div>
+        <div class="modal-footer border-0 justify-content-center pb-4">
+          <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Listen for global SSE events and open modal for acceptances
+    document.addEventListener('sse-event', function (e) {
+      var d = e.detail || {};
+      if (d.type === 'student_accepted') {
+        var msg = d.message || ('A student accepted: ' + (d.title || 'task'));
+        var el = document.getElementById('companyAcceptModal');
+        if (el) {
+          var placeholder = document.getElementById('companyAcceptModalMsg');
+          if (placeholder) { placeholder.textContent = msg; }
+          var m = new bootstrap.Modal(el);
+          m.show();
+        }
+      }
+    });
+  </script>
+
+  <!-- Awaiting Selection -->
+  <div class="dashboard-section">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="dashboard-section-title">Tasks Awaiting Selection</div>
+      <span class="badge bg-primary">{{ tasks_awaiting_selection|length if tasks_awaiting_selection else 0 }}</span>
+    </div>
+    {% if tasks_awaiting_selection and tasks_awaiting_selection|length > 0 %}
+      {% for task in tasks_awaiting_selection %}
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <h4 class="mb-1">
+                  <a href="{{ url_for('task_detail', task_id=task.id) }}" class="text-decoration-none">
+                    {{ task.title }}
+                  </a>
+                </h4>
+                <div class="text-muted small">Created {{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "" }}</div>
+                <div class="status-badges mt-1">
+                  <span class="badge bg-warning">Awaiting your selection</span>
+                </div>
+              </div>
+              <div class="inline-actions">
+                <span class="badge bg-primary">Applicants: {{ task.applications|length }}</span>
+              </div>
+            </div>
+            {% if task.requirements %}
+              <p class="mt-2 mb-2 text-muted">{{ task.requirements }}</p>
+            {% elif task.description %}
+              <p class="mt-2 mb-2 text-muted">{{ task.description }}</p>
+            {% endif %}
+            <div class="inline-actions">
+              <a href="{{ url_for('company_view_applicants', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">View Applicants</a>
+              <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit Task</a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="alert alert-light border">No tasks are currently awaiting selection.</div>
+    {% endif %}
+  </div>
+
+  <!-- Active Tasks -->
+  <div class="dashboard-section">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="dashboard-section-title">Active Tasks</div>
+      <span class="badge bg-primary">{{ tasks_active|length if tasks_active else 0 }}</span>
+    </div>
+    {% if tasks_active and tasks_active|length > 0 %}
+      {% for task in tasks_active %}
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <h4 class="mb-1">
+                  <a href="{{ url_for('task_detail', task_id=task.id) }}" class="text-decoration-none">
+                    {{ task.title }}
+                  </a>
+                </h4>
+                <div class="text-muted small">Created {{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "" }}</div>
+                <div class="status-badges mt-1">
+                  <span class="badge bg-success">Awaiting student response / In progress</span>
+                </div>
+              </div>
+              <div class="inline-actions">
+                <span class="badge bg-primary">Applicants: {{ task.applications|length }}</span>
+              </div>
+            </div>
+            {% if task.requirements %}
+              <p class="mt-2 mb-2 text-muted">{{ task.requirements }}</p>
+            {% elif task.description %}
+              <p class="mt-2 mb-2 text-muted">{{ task.description }}</p>
+            {% endif %}
+            {% set has_submission = (task.applications | selectattr('student_file') | list | length) > 0 %}
+            <div class="inline-actions">
+              <a href="{{ url_for('company_view_applicants', task_id=task.id) }}"
+                 class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
+                {{ 'View Submission' if has_submission else 'View Applicants' }}
+              </a>
+              <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit Task</a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="alert alert-light border">No active tasks at the moment.</div>
+    {% endif %}
+  </div>
+
+  <!-- Past Tasks -->
+  <div class="dashboard-section">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="dashboard-section-title">Past Tasks</div>
+      <span class="badge bg-primary">{{ tasks_past|length if tasks_past else 0 }}</span>
+    </div>
+    {% if tasks_past and tasks_past|length > 0 %}
+      {% for task in tasks_past %}
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <h4 class="mb-1">
+                  <a href="{{ url_for('task_detail', task_id=task.id) }}" class="text-decoration-none">
+                    {{ task.title }}
+                  </a>
+                </h4>
+                <div class="text-muted small">Created {{ task.created_at.strftime("%Y-%m-%d") if task.created_at else "" }}</div>
+                <div class="status-badges mt-1">
+                  <span class="badge bg-secondary">Approved / Completed</span>
+                </div>
+              </div>
+              <div class="inline-actions">
+                <span class="badge bg-primary">Applicants: {{ task.applications|length }}</span>
+              </div>
+            </div>
+            {% if task.requirements %}
+              <p class="mt-2 mb-2 text-muted">{{ task.requirements }}</p>
+            {% elif task.description %}
+              <p class="mt-2 mb-2 text-muted">{{ task.description }}</p>
+            {% endif %}
+            {% set has_submission = (task.applications | selectattr('student_file') | list | length) > 0 %}
+            <div class="inline-actions">
+              <a href="{{ url_for('company_view_applicants', task_id=task.id) }}"
+                 class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
+                {{ 'View Submission' if has_submission else 'View Applicants' }}
+              </a>
+              <a href="{{ url_for('task_detail', task_id=task.id) }}#submissions" class="btn btn-outline-secondary btn-sm">Task Page</a>
+              <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit Task</a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="alert alert-light border">No past tasks yet.</div>
+    {% endif %}
+  </div>
+  </div> <!-- end Overview tab -->
+
+  <!-- Notifications Tab -->
+  <div class="tab-pane fade" id="notifications" role="tabpanel" aria-labelledby="notifications-tab">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="h6 mb-0">Recent notifications</div>
+      <div class="d-flex gap-2">
+            <form method="post" action="{{ url_for('mark_notification_read', notif_id=0) }}">          <input type="hidden" name="next" value="{{ url_for('company_dashboard') }}#notifications">
+          <button class="btn btn-sm btn-outline-secondary" {% if not company_unread_count %}disabled{% endif %}>Mark all read</button>
+        </form>
+      </div>
+    </div>
+
+    {% set unread = company_unread if company_unread is defined else [] %}
+    {% set read = company_read if company_read is defined else [] %}
+
+    {% if unread %}
+      <div class="mb-2 small text-muted">Unread</div>
+      <div class="list-group mb-3">
+        {% for n in unread %}
+          <div class="list-group-item d-flex justify-content-between align-items-start bg-light">
+            <div class="me-3">
+              <div class="fw-semibold">{{ n.message }}</div>
+              <div class="text-muted small">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
+            </div>
+            <div>
+              <form method="post" action="{{ url_for('mark_notification_read', notif_id=n.id) }}">
+                <input type="hidden" name="next" value="{{ url_for('company_dashboard') }}#notifications">
+                <button class="btn btn-sm btn-primary">Mark read</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if read %}
+      <div class="mb-2 small text-muted">Read</div>
+      <div class="list-group">
+        {% for n in read %}
+          <div class="list-group-item d-flex justify-content-between align-items-start">
+            <div class="me-3">
+              <div class="fw-semibold">{{ n.message }}</div>
+              <div class="text-muted small">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
+            </div>
+            <span class="badge bg-secondary align-self-center">Read</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif not unread %}
+      <div class="alert alert-light border">No notifications.</div>
+    {% endif %}
+  </div>
+</div> <!-- end tab-content -->
+
+<script>
+// Activate tab based on URL hash (e.g., #notifications)
+(function() {
+  try {
+    const hash = window.location.hash;
+    if (hash) {
+      const tabTriggerEl = document.querySelector(`button[data-bs-target='${hash}']`);
+      if (tabTriggerEl) {
+        const tab = new bootstrap.Tab(tabTriggerEl);
+        tab.show();
+      }
+    }
+  } catch (e) {}
+})();
+</script>
+
+</div> <!-- end container -->
+{% endblock %}

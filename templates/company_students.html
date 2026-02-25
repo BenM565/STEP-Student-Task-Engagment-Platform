@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="section">
+    <h1>Past Students</h1>
+    <p class="text-secondary mb-4">Students you've completed work with</p>
+
+    {% if student_data and student_data|length > 0 %}
+        <div class="card-grid">
+            {% for item in student_data %}
+                {% set student = item.student %}
+                {% set rating_avg = item.rating_avg %}
+                {% set rating_count = item.rating_count %}
+
+                <div class="card">
+                    <div class="card-body">
+                        <h3 class="card-title">{{ student.name }}</h3>
+                        <p class="text-secondary mb-3">{{ student.email }}</p>
+
+                        <!-- Overall Rating -->
+                        <div class="mb-3">
+                            {% if rating_count > 0 %}
+                                {% set full = rating_avg|round(0, 'floor')|int %}
+                                {% set empty = 5 - full %}
+
+                                <div class="d-flex align-items-center gap-2">
+                                    <span>
+                                        {% for _ in range(full) %}
+                                            <i class="bi bi-star-fill text-warning"></i>
+                                        {% endfor %}
+                                        {% for _ in range(empty) %}
+                                            <i class="bi bi-star text-warning"></i>
+                                        {% endfor %}
+                                    </span>
+                                    <span>
+                                        <strong>{{ rating_avg }}</strong>/5
+                                        <span class="text-secondary">({{ rating_count }} reviews)</span>
+                                    </span>
+                                </div>
+                            {% else %}
+                                <span class="text-secondary">No reviews yet</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Student Skills (if available) -->
+                        {% if student.skills %}
+                            <div class="mb-3">
+                                <strong>Skills:</strong>
+                                <p class="text-secondary mb-0">{{ student.skills }}</p>
+                            </div>
+                        {% endif %}
+
+                        <!-- View Profile Button -->
+                        <a href="{{ url_for('company_view_student', student_id=student.id) }}"
+                           class="btn btn-primary btn-sm">
+                            View Full Profile
+                        </a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">👥</div>
+            <h3 class="empty-state-title">No Past Students Yet</h3>
+            <p class="empty-state-text">
+                Students who have completed tasks for you will appear here.
+            </p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

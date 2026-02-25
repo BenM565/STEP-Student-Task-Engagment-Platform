@@ -1,0 +1,51 @@
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
+
+{% extends "base.html" %}
+{% block content %}
+<h5 class="mb-3">Disputes</h5>
+
+{% if disputes %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Status</th>
+          <th>Raised By</th>
+          <th>Against</th>
+          <th>Task</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for d in disputes %}
+        <tr>
+          <td>#{{ d.id }}</td>
+          <td>
+            <span class="badge {% if d.status == 'resolved' %}bg-success{% elif d.status == 'in_review' %}bg-warning{% else %}bg-secondary{% endif %}">
+              {{ d.status|upper }}
+            </span>
+          </td>
+          <td>{{ d.raised_by_user_id }}</td>
+          <td>{{ d.against_user_id or '—' }}</td>
+          <td>{{ d.task_id or '—' }}</td>
+          <td class="text-muted small">{{ d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else '' }}</td>
+          <td><a href="{{ url_for('admin_dispute_detail', dispute_id=d.id) }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="text-muted">No disputes found.</p>
+{% endif %}
+
+<a href="{{ url_for('admin_home') }}" class="btn btn-link p-0">← Back to admin</a>
+{% endblock %}

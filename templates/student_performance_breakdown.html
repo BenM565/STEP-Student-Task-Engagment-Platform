@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="section">
+    <div class="container" style="max-width: 900px;">
+
+        <!-- Header -->
+        <div class="mb-4">
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary btn-sm mb-3">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+            <h1>Your Performance Breakdown</h1>
+            <p class="text-secondary">Understanding how your score is calculated</p>
+        </div>
+
+       <!-- Overall Score Card - UPDATED -->
+<div class="card mb-4" style="background: linear-gradient(135deg, #00ff88 0%, #00cc6f 100%); color: white;">
+    <div class="card-body text-center py-5">
+        <h2 class="mb-2">Overall Performance Score</h2>
+
+        <!-- Show score as percentage -->
+        <div style="font-size: 4rem; font-weight: 800; margin: 1rem 0;">
+            {{ metrics.final_score }}%
+        </div>
+
+        <!-- Convert to 5-star scale and display -->
+        {% set performance_stars = (metrics.final_score / 20)|round(0, 'floor')|int %}
+        {% set empty_perf_stars = 5 - performance_stars %}
+        <div class="stars-performance mb-3">
+            {% for i in range(performance_stars) %}
+                <i class="bi bi-star-fill"></i>
+            {% endfor %}
+            {% for i in range(empty_perf_stars) %}
+                <i class="bi bi-star"></i>
+            {% endfor %}
+        </div>
+        <p class="mb-0" style="font-size: 1.1rem;">
+            {{ (metrics.final_score / 20)|round(1) }}/5 stars based on performance
+        </p>
+        <p class="mb-0" style="font-size: 0.9rem; opacity: 0.8;">
+            From {{ metrics.completion_rate.completed }} completed tasks
+        </p>
+    </div>
+</div>
+
+<style>
+.stars-performance {
+    font-size: 3rem;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.stars-performance i {
+    margin: 0 0.25rem;
+}
+</style>
+
+        <!-- Average Rating Card -->
+        {% if metrics.rating_count > 0 %}
+        <div class="card mb-4">
+            <div class="card-body text-center">
+                <h3 class="mb-3">Company Ratings</h3>
+                <div class="d-flex justify-content-center align-items-center gap-3 mb-2">
+                    <div style="font-size: 2rem;">
+                        {% set full_stars = (metrics.rating_avg)|round(0, 'floor')|int %}
+                        {% set empty_stars = 5 - full_stars %}
+                        {% for i in range(full_stars) %}
+                            <i class="bi bi-star-fill text-warning"></i>
+                        {% endfor %}
+                        {% for i in range(empty_stars) %}
+                            <i class="bi bi-star text-warning"></i>
+                        {% endfor %}
+                    </div>
+                    <div style="font-size: 2rem; font-weight: bold;">
+                        {{ metrics.rating_avg }}/5
+                    </div>
+                </div>
+                <p class="text-secondary mb-0">Based on {{ metrics.rating_count }} reviews</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Performance Metrics Breakdown -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3 class="mb-0">Performance Metrics Breakdown</h3>
+            </div>
+            <div class="card-body p-0">
+
+                <!-- Metric 1: Completion Rate -->
+                <div class="metric-item" onclick="toggleMetricDetails('completion')">
+                    <div class="metric-header">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div class="d-flex align-items-center gap-3">
+                                <i class="bi bi-check-circle metric-icon"></i>
+                                <div>
+                                    <h4 class="mb-0">{{ metrics.completion_rate.title }}</h4>
+                                    <small class="text-secondary">{{ metrics.completion_rate.completed }} of {{ metrics.completion_rate.accepted }} tasks completed</small>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="text-end">
+                                    <div class="metric-score">{{ metrics.completion_rate.value }}%</div>
+                                    <small class="text-secondary">Weight: {{ metrics.completion_rate.weight }}%</small>
+                                </div>
+                                <i class="bi bi-chevron-down metric-toggle"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="metric-details" id="completion-details" style="display: none;">
+                        <div class="progress mb-3" style="height: 30px;">
+                            <div class="progress-bar bg-success" role="progressbar"
+                                 style="width: {{ metrics.completion_rate.value }}%;"
+                                 aria-valuenow="{{ metrics.completion_rate.value }}"
+                                 aria-valuemin="0" aria-valuemax="100">
+                                {{ metrics.completion_rate.value }}%
+                            </div>
+                        </div>
+                        <p><strong>What this means:</strong> {{ metrics.completion_rate.description }}</p>
+                        <p class="mb-0"><strong>💡 How to improve:</strong> {{ metrics.completion_rate.tip }}</p>
+                    </div>
+                </div>
+
+                <!-- Metric 2: On-Time Delivery -->
+                <div class="metric-item" onclick="toggleMetricDetails('ontime')">
+                    <div class="metric-header">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div class="d-flex align-items-center gap-3">
+                                <i class="bi bi-clock metric-icon"></i>
+                                <div>
+                                    <h4 class="mb-0">{{ metrics.on_time_rate.title }}</h4>
+                                    <small class="text-secondary">{{ metrics.on_time_rate.on_time }} of {{ metrics.on_time_rate.completed }} on time</small>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="text-end">
+                                    <div class="metric-score">{{ metrics.on_time_rate.value }}%</div>
+                                    <small class="text-secondary">Weight: {{ metrics.on_time_rate.weight }}%</small>
+                                </div>
+                                <i class="bi bi-chevron-down metric-toggle"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="metric-details" id="ontime-details" style="display: none;">
+                        <div class="progress mb-3" style="height: 30px;">
+                            <div class="progress-bar bg-info" role="progressbar"
+                                 style="width: {{ metrics.on_time_rate.value }}%;"
+                                 aria-valuenow="{{ metrics.on_time_rate.value }}"
+                                 aria-valuemin="0" aria-valuemax="100">
+                                {{ metrics.on_time_rate.value }}%
+                            </div>
+                        </div>
+                        <p><strong>What this means:</strong> {{ metrics.on_time_rate.description }}</p>
+                        <p class="mb-0"><strong>💡 How to improve:</strong> {{ metrics.on_time_rate.tip }}</p>
+                    </div>
+                </div>
+
+                <!-- Metric 3: First-Pass Acceptance -->
+                <div class="metric-item" onclick="toggleMetricDetails('firstpass')">
+                    <div class="metric-header">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div class="d-flex align-items-center gap-3">
+                                <i class="bi bi-trophy metric-icon"></i>
+                                <div>
+                                    <h4 class="mb-0">{{ metrics.acceptance_efficiency.title }}</h4>
+                                    <small class="text-secondary">{{ metrics.acceptance_efficiency.first_pass }} of {{ metrics.acceptance_efficiency.completed }} approved first try</small>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="text-end">
+                                    <div class="metric-score">{{ metrics.acceptance_efficiency.value }}%</div>
+                                    <small class="text-secondary">Weight: {{ metrics.acceptance_efficiency.weight }}%</small>
+                                </div>
+                                <i class="bi bi-chevron-down metric-toggle"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="metric-details" id="firstpass-details" style="display: none;">
+                        <div class="progress mb-3" style="height: 30px;">
+                            <div class="progress-bar bg-warning" role="progressbar"
+                                 style="width: {{ metrics.acceptance_efficiency.value }}%;"
+                                 aria-valuenow="{{ metrics.acceptance_efficiency.value }}"
+                                 aria-valuemin="0" aria-valuemax="100">
+                                {{ metrics.acceptance_efficiency.value }}%
+                            </div>
+                        </div>
+                        <p><strong>What this means:</strong> {{ metrics.acceptance_efficiency.description }}</p>
+                        <p class="mb-0"><strong>💡 How to improve:</strong> {{ metrics.acceptance_efficiency.tip }}</p>
+                    </div>
+                </div>
+
+                <!-- Metric 4: Quality Score -->
+                <div class="metric-item" onclick="toggleMetricDetails('quality')">
+                    <div class="metric-header">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div class="d-flex align-items-center gap-3">
+                                <i class="bi bi-star metric-icon"></i>
+                                <div>
+                                    <h4 class="mb-0">{{ metrics.quality_score.title }}</h4>
+                                    <small class="text-secondary">{{ metrics.quality_score.changes }} change requests received</small>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="text-end">
+                                    <div class="metric-score">{{ metrics.quality_score.value }}%</div>
+                                    <small class="text-secondary">Weight: {{ metrics.quality_score.weight }}%</small>
+                                </div>
+                                <i class="bi bi-chevron-down metric-toggle"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="metric-details" id="quality-details" style="display: none;">
+                        <div class="progress mb-3" style="height: 30px;">
+                            <div class="progress-bar bg-primary" role="progressbar"
+                                 style="width: {{ metrics.quality_score.value }}%;"
+                                 aria-valuenow="{{ metrics.quality_score.value }}"
+                                 aria-valuemin="0" aria-valuemax="100">
+                                {{ metrics.quality_score.value }}%
+                            </div>
+                        </div>
+                        <p><strong>What this means:</strong> {{ metrics.quality_score.description }}</p>
+                        <p class="mb-0"><strong>💡 How to improve:</strong> {{ metrics.quality_score.tip }}</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- How It's Calculated Card -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">How Your Score is Calculated</h3>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">Your overall performance score is a weighted average of the four metrics above:</p>
+                <div class="calculation-breakdown">
+                    <div class="calc-item">
+                        <span class="calc-label">Task Completion Rate</span>
+                        <span class="calc-weight">× 35%</span>
+                        <span class="calc-value">= {{ (metrics.completion_rate.value * 0.35 / 100 * 100)|round(1) }}%</span>
+                    </div>
+                    <div class="calc-item">
+                        <span class="calc-label">On-Time Delivery</span>
+                        <span class="calc-weight">× 30%</span>
+                        <span class="calc-value">= {{ (metrics.on_time_rate.value * 0.30 / 100 * 100)|round(1) }}%</span>
+                    </div>
+                    <div class="calc-item">
+                        <span class="calc-label">First-Pass Acceptance</span>
+                        <span class="calc-weight">× 20%</span>
+                        <span class="calc-value">= {{ (metrics.acceptance_efficiency.value * 0.20 / 100 * 100)|round(1) }}%</span>
+                    </div>
+                    <div class="calc-item">
+                        <span class="calc-label">Work Quality Score</span>
+                        <span class="calc-weight">× 15%</span>
+                        <span class="calc-value">= {{ (metrics.quality_score.value * 0.15 / 100 * 100)|round(1) }}%</span>
+                    </div>
+                    <hr>
+                    <div class="calc-item calc-total">
+                        <span class="calc-label"><strong>Final Performance Score</strong></span>
+                        <span class="calc-weight"></span>
+                        <span class="calc-value"><strong>= {{ metrics.final_score }}%</strong></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Add JavaScript for toggle functionality -->
+<script>
+function toggleMetricDetails(metricId) {
+    const details = document.getElementById(metricId + '-details');
+    const toggle = event.currentTarget.querySelector('.metric-toggle');
+
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+        toggle.classList.remove('bi-chevron-down');
+        toggle.classList.add('bi-chevron-up');
+    } else {
+        details.style.display = 'none';
+        toggle.classList.remove('bi-chevron-up');
+        toggle.classList.add('bi-chevron-down');
+    }
+}
+</script>
+
+<!-- Add CSS for metric items -->
+<style>
+.metric-item {
+    border-bottom: 1px solid var(--border-light);
+    transition: background var(--transition-fast);
+}
+
+.metric-item:last-child {
+    border-bottom: none;
+}
+
+.metric-item:hover {
+    background: var(--bg-secondary);
+}
+
+.metric-header {
+    padding: 1.5rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.metric-details {
+    padding: 0 1.5rem 1.5rem 1.5rem;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-light);
+}
+
+.metric-icon {
+    font-size: 2rem;
+    color: var(--primary-color);
+}
+
+.metric-score {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.metric-toggle {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    transition: transform var(--transition-fast);
+}
+
+.calculation-breakdown {
+    background: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: var(--radius-lg);
+}
+
+.calc-item {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    align-items: center;
+}
+
+.calc-total {
+    padding-top: 1rem;
+    font-size: 1.1rem;
+}
+
+.calc-label {
+    color: var(--text-primary);
+}
+
+.calc-weight {
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.calc-value {
+    color: var(--primary-color);
+    font-weight: 600;
+    text-align: right;
+}
+</style>
+{% endblock %}

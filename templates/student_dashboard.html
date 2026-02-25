@@ -1,0 +1,603 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="student-dashboard">
+    <div class="dashboard-container">
+
+        <!-- Welcome Section -->
+        <div class="welcome-section text-center mb-5">
+            <h1 class="dashboard-title">Welcome back, {{ current_user.name }}! 👋</h1>
+            <p class="dashboard-subtitle">Here's your performance overview</p>
+        </div>
+
+        <!-- Performance Snapshot -->
+        <div class="performance-card">
+            <div class="card-header-clean">
+                <h2 class="section-title">Performance Snapshot</h2>
+                <a href="{{ url_for('student_performance_breakdown') }}"
+                   class="btn btn-primary">
+                    View Full Breakdown
+                </a>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value stat-active">{{ active_apps|length }}</div>
+                    <div class="stat-label">Active Tasks</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value stat-pending">{{ pending_apps|length if pending_apps else 0 }}</div>
+                    <div class="stat-label">Pending Review</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value stat-completed">{{ past_apps|length }}</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value stat-rating">{{ rating_avg }}</div>
+                    <div class="stat-label">Avg Rating</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rating Card -->
+        <div class="rating-card">
+            <h2 class="section-title text-center mb-4">Your Rating</h2>
+
+            <div class="rating-display">
+                {% if rating_count > 0 %}
+                    <div class="stars-large mb-3">
+                        {% set full_stars = (rating_avg)|round(0, 'floor')|int %}
+                        {% set empty_stars = 5 - full_stars %}
+                        {% for i in range(full_stars) %}
+                            <i class="bi bi-star-fill"></i>
+                        {% endfor %}
+                        {% for i in range(empty_stars) %}
+                            <i class="bi bi-star"></i>
+                        {% endfor %}
+                    </div>
+                    <div class="rating-score">{{ rating_avg }}/5</div>
+                    <p class="rating-count">Based on {{ rating_count }} reviews</p>
+                {% else %}
+                    <div class="stars-large mb-3">
+                        <i class="bi bi-star"></i>
+                        <i class="bi bi-star"></i>
+                        <i class="bi bi-star"></i>
+                        <i class="bi bi-star"></i>
+                        <i class="bi bi-star"></i>
+                    </div>
+                    <div class="rating-score">0.0/5</div>
+                    <p class="rating-count">No reviews yet</p>
+                {% endif %}
+            </div>
+
+            <div class="text-center mt-4">
+                <a href="{{ url_for('student_performance_breakdown') }}"
+                   class="btn btn-outline-primary btn-lg">
+                    <i class="bi bi-graph-up"></i> View Performance Breakdown
+                </a>
+            </div>
+        </div>
+
+        <!-- ACTIVE TASKS - ALWAYS VISIBLE -->
+        <div class="tasks-section">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="section-title mb-0">Active Tasks</h2>
+                <span class="badge badge-primary">{{ active_apps|length }}</span>
+            </div>
+
+            {% if active_apps and active_apps|length > 0 %}
+                <div class="tasks-grid">
+                    {% for app in active_apps %}
+                    <div class="task-card-modern">
+                        <div class="task-header">
+                            <h3 class="task-title">{{ app.task.title }}</h3>
+                            <span class="badge badge-success">Working On</span>
+                        </div>
+                        <div class="task-meta">
+                            <span><i class="bi bi-building"></i> {{ app.task.company.name }}</span>
+                            <span><i class="bi bi-calendar"></i> Started {{ app.created_at.strftime('%b %d, %Y') }}</span>
+                        </div>
+
+                        <!-- File upload form -->
+                        {% if not app.student_file %}
+                        <div class="upload-section mt-3">
+                            <form action="{{ url_for('student_upload_media', application_id=app.id) }}"
+                                  method="post"
+                                  enctype="multipart/form-data">
+                                <div class="mb-2">
+                                    <label class="form-label fw-bold">
+                                        <i class="bi bi-cloud-upload"></i> Upload your work:
+                                    </label>
+                                    <input type="file" name="file" class="form-control" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-upload"></i> Submit Work
+                                </button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-success mt-3">
+                            <i class="bi bi-check-circle"></i> Work submitted! Awaiting review.
+                        </div>
+                        {% endif %}
+
+                        <div class="task-actions mt-3">
+                            <a href="{{ url_for('task_detail', task_id=app.task.id) }}"
+                               class="btn btn-secondary w-100">
+                                <i class="bi bi-eye"></i> View Task Details
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state-modern">
+                    <i class="bi bi-inbox empty-icon"></i>
+                    <h3>No Active Tasks</h3>
+                    <p>You don't have any tasks in progress.</p>
+                    <a href="{{ url_for('browse_tasks') }}" class="btn btn-primary mt-3">
+                        <i class="bi bi-search"></i> Browse Available Tasks
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- PENDING REVIEW - EXPANDABLE -->
+        <div class="expandable-section mb-4">
+            <div class="section-header" onclick="toggleSection('pending-section')">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-hourglass-split section-indicator" style="color: #ffcc00;"></i>
+                    <h2 class="section-title mb-0">Pending Review</h2>
+                    <span class="badge badge-warning">{{ pending_apps|length if pending_apps else 0 }}</span>
+                </div>
+                <i class="bi bi-chevron-down toggle-icon" id="pending-section-icon"></i>
+            </div>
+
+            <div class="section-content" id="pending-section" style="display: none;">
+                {% if pending_apps and pending_apps|length > 0 %}
+                    <div class="tasks-grid">
+                        {% for app in pending_apps %}
+                        <div class="task-card-modern">
+                            <div class="task-header">
+                                <h3 class="task-title">{{ app.task.title }}</h3>
+                                <span class="badge badge-warning">Awaiting Review</span>
+                            </div>
+                            <div class="task-meta">
+                                <span><i class="bi bi-building"></i> {{ app.task.company.name }}</span>
+                                <span><i class="bi bi-clock"></i> Submitted {{ app.submitted_at.strftime('%b %d, %Y') if app.submitted_at else 'Recently' }}</span>
+                            </div>
+
+                            {% if app.student_file %}
+                            <div class="file-info mt-3">
+                                <i class="bi bi-file-earmark-check text-success"></i>
+                                <strong>Submitted:</strong> {{ app.student_file }}
+                            </div>
+                            {% endif %}
+
+                            <div class="task-actions mt-3">
+                                <a href="{{ url_for('task_detail', task_id=app.task.id) }}"
+                                   class="btn btn-secondary w-100">
+                                    <i class="bi bi-eye"></i> View Details
+                                </a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state-compact">
+                        <i class="bi bi-hourglass-split"></i>
+                        <p>No tasks pending review. Submit your work to see tasks here.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- COMPLETED TASKS - EXPANDABLE -->
+        <div class="expandable-section mb-4">
+            <div class="section-header" onclick="toggleSection('completed-section')">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-check-circle section-indicator" style="color: #007aff;"></i>
+                    <h2 class="section-title mb-0">Completed Tasks</h2>
+                    <span class="badge badge-secondary">{{ past_apps|length }}</span>
+                </div>
+                <i class="bi bi-chevron-down toggle-icon" id="completed-section-icon"></i>
+            </div>
+
+            <div class="section-content" id="completed-section" style="display: none;">
+                {% if past_apps and past_apps|length > 0 %}
+                    <div class="tasks-grid">
+                        {% for app in past_apps %}
+                        <div class="task-card-modern">
+                            <div class="task-header">
+                                <h3 class="task-title">{{ app.task.title }}</h3>
+                                <span class="badge badge-secondary">Completed</span>
+                            </div>
+                            <div class="task-meta">
+                                <span><i class="bi bi-building"></i> {{ app.task.company.name }}</span>
+                                <span><i class="bi bi-check-circle"></i> {{ app.completed_at.strftime('%b %d, %Y') if app.completed_at else 'Completed' }}</span>
+                            </div>
+
+                            {% if existing_reviews.get(app.id) %}
+                                <div class="review-info">
+                                    <p class="mb-2">
+                                        <i class="bi bi-star-fill text-warning"></i>
+                                        You rated this: {{ existing_reviews[app.id].rating }}/5
+                                    </p>
+                                </div>
+                            {% endif %}
+
+                            <div class="task-actions">
+                                <a href="{{ url_for('task_detail', task_id=app.task.id) }}"
+                                   class="btn btn-secondary btn-sm">
+                                    <i class="bi bi-eye"></i> View Details
+                                </a>
+                                <a href="{{ url_for('student_performance_breakdown') }}"
+                                   class="btn btn-outline-primary btn-sm">
+                                    <i class="bi bi-graph-up"></i> Performance
+                                </a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state-compact">
+                        <i class="bi bi-archive"></i>
+                        <p>No completed tasks yet. Complete your first task to see it here!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- JavaScript for expandable sections -->
+<script>
+function toggleSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    const icon = document.getElementById(sectionId + '-icon');
+
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        icon.classList.remove('bi-chevron-down');
+        icon.classList.add('bi-chevron-up');
+    } else {
+        section.style.display = 'none';
+        icon.classList.remove('bi-chevron-up');
+        icon.classList.add('bi-chevron-down');
+    }
+}
+</script>
+
+<!-- Styles -->
+<style>
+/* Keep all previous dashboard styles */
+.student-dashboard {
+    min-height: 100vh;
+    background: var(--bg-secondary);
+    padding: 3rem 0;
+}
+
+.dashboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+.welcome-section {
+    margin-bottom: 3rem;
+}
+
+.dashboard-title {
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.dashboard-subtitle {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+}
+
+.performance-card, .rating-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-2xl);
+    padding: 2.5rem;
+    margin-bottom: 3rem;
+    box-shadow: var(--shadow-md);
+}
+
+.card-header-clean {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.section-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+.stat-box {
+    text-align: center;
+    padding: 2rem 1rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-xl);
+    transition: transform var(--transition-fast);
+}
+
+.stat-box:hover {
+    transform: translateY(-5px);
+}
+
+.stat-value {
+    font-size: 3rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+    line-height: 1;
+}
+
+.stat-active { color: #00ff88; }
+.stat-pending { color: #ffcc00; }
+.stat-completed { color: #007aff; }
+.stat-rating { color: #ff6b35; }
+
+.stat-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.rating-display {
+    text-align: center;
+    padding: 2rem 0;
+}
+
+.stars-large {
+    font-size: 3rem;
+    color: #ffcc00;
+}
+
+.stars-large i {
+    margin: 0 0.25rem;
+}
+
+.rating-score {
+    font-size: 3rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin: 1rem 0;
+}
+
+.rating-count {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* Tasks Section - Always Visible */
+.tasks-section {
+    margin-bottom: 4rem;
+}
+
+.tasks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 2rem;
+}
+
+.task-card-modern {
+    background: var(--bg-card);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-base);
+    border: 2px solid transparent;
+}
+
+.task-card-modern:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary-color);
+}
+
+.task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+}
+
+.task-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    flex: 1;
+}
+
+.task-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.task-meta span {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.task-meta i {
+    color: var(--primary-color);
+}
+
+.upload-section {
+    background: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: var(--radius-md);
+}
+
+.file-info {
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+}
+
+.review-info {
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-bottom: 1.5rem;
+}
+
+.task-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Expandable Sections */
+.expandable-section {
+    background: var(--bg-card);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1.5rem;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast);
+}
+
+.section-header:hover {
+    background: var(--bg-secondary);
+}
+
+.section-indicator {
+    font-size: 0.75rem;
+}
+
+.toggle-icon {
+    font-size: 1.5rem;
+    color: var(--text-secondary);
+    transition: transform var(--transition-base);
+}
+
+.section-content {
+    padding: 0 2rem 2rem 2rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Empty States */
+.empty-state-modern {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: var(--bg-card);
+    border-radius: var(--radius-xl);
+    border: 2px dashed var(--border-light);
+}
+
+.empty-icon {
+    font-size: 4rem;
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+}
+
+.empty-state-modern h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.empty-state-modern p {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-bottom: 1.5rem;
+}
+
+.empty-state-compact {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+}
+
+.empty-state-compact i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    display: block;
+    color: var(--text-muted);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .dashboard-container {
+        padding: 0 1rem;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+
+    .performance-card,
+    .rating-card {
+        padding: 1.5rem;
+    }
+
+    .tasks-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .card-header-clean {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .section-header {
+        padding: 1rem 1.5rem;
+    }
+
+    .section-content {
+        padding: 0 1.5rem 1.5rem 1.5rem;
+    }
+}
+</style>
+{% endblock %}

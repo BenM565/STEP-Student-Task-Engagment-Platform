@@ -1,77 +1,93 @@
-<!--code layout is from chatgt-->>
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
 
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
+
 {% block content %}
+  <div class="container mt-4">
+    <h3 class="mb-4">My Tasks</h3>
 
-<div class="container mt-3">
-  <h4 class="mb-3">Tasks</h4>
+    {% if applications %}
+      {% for application in applications %}
+        <div class="card mb-3 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">{{ application.task.title }}</h5>
+            <p class="card-text">{{ application.task.description }}</p>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
+            {% if application.selected %}
+              <div class="alert alert-success">You’ve been selected for this task!</div>
 
-  <form method="get" class="card p-3 shadow-sm mb-3">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-6">
-        <label class="form-label">Filter by skill or keyword</label>
-        <input type="text"
-               name="skill"
-               class="form-control"
-               placeholder="e.g. Python, Excel, data analysis"
-               value="{{ skill }}">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">Max estimated hours</label>
-        <input type="number"
-               name="max_hours"
-               class="form-control"
-               min="1"
-               placeholder="e.g. 10"
-               value="{{ max_hours }}">
-      </div>
-      <div class="col-md-3 d-flex gap-2">
-        <button class="btn btn-primary flex-grow-1">Apply filters</button>
-        <a href="{{ url_for('student_tasks') }}" class="btn btn-outline-secondary">Clear</a>
-      </div>
-    </div>
-  </form>
+              {% if application.task.media_file %}
+                <p><strong>Company Media:</strong>
+                  <a href="{{ url_for('static', filename='uploads/' ~ application.task.media_file) }}" target="_blank">View</a>
+                </p>
+              {% endif %}
 
-  {% if tasks %}
-    <ul class="list-group">
-      {% for t in tasks %}
-        <li class="list-group-item d-flex justify-content-between align-items-center">
-          <div>
-            <div class="fw-semibold">{{ t.title }}</div>
-            <div class="small text-muted mb-1">
-              {{ t.requirements or 'No description provided.' }}
-            </div>
-            {% if t.estimated_hours %}
-              <div class="small text-muted">
-                Estimated hours: {{ t.estimated_hours }}
-              </div>
+              <form action="{{ url_for('student_upload_media', application_id=application.id) }}" method="post" enctype="multipart/form-data" class="mb-3">
+                <input type="file" name="file" required class="form-control mb-2">
+                <button class="btn btn-primary btn-sm">Upload Submission</button>
+              </form>
+
+              {% if application.student_file %}
+                <p><strong>You uploaded:</strong>
+                  <a href="{{ url_for('static', filename='uploads/' ~ application.student_file) }}" target="_blank">View</a>
+                </p>
+              {% endif %}
+
+              {% if application.status == 'completed' %}
+                {% set rev = existing_reviews.get(application.id) if existing_reviews else None %}
+                {% set editable = not rev or edit_allowed.get(application.id) %}
+                <hr>
+                <h6 class="mb-2">Rate this company</h6>
+                <button class="btn btn-outline-secondary btn-sm mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#rate-collapse-{{ application.id }}" aria-expanded="false" aria-controls="rate-collapse-{{ application.id }}">
+                  {{ 'Edit your rating' if rev else 'Add a rating' }}
+                </button>
+                <div class="collapse" id="rate-collapse-{{ application.id }}">
+                  <form method="post" action="{{ url_for('create_or_update_review', application_id=application.id) }}" class="form-compact">
+                    <div class="mb-2">
+                      <div class="form-label mb-1">Rating</div>
+                      <div class="rating {% if not editable %}readonly{% endif %}">
+                        {% for i in [5,4,3,2,1] %}
+                          <input type="radio" id="ratec-{{ application.id }}-{{ i }}" name="rating" value="{{ i }}"
+                                 {% if rev and rev.rating == i %}checked{% elif not rev and i == 5 %}checked{% endif %}
+                                 {% if not editable %}disabled{% endif %}>
+                          <label for="ratec-{{ application.id }}-{{ i }}">★</label>
+                        {% endfor %}
+                      </div>
+                      {% if rev and not editable %}
+                        <input type="hidden" name="rating" value="{{ rev.rating }}">
+                        <div class="text-muted small mt-1">Edit window has expired.</div>
+                      {% endif %}
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Comment (optional)</label>
+                      <textarea name="comment" class="form-control" rows="2" {% if not editable %}disabled{% endif %}>{{ rev.comment if rev else '' }}</textarea>
+                      {% if rev and not editable %}
+                        <input type="hidden" name="comment" value="{{ rev.comment }}">
+                      {% endif %}
+                    </div>
+                    <div>
+                      {% if rev %}
+                        <button class="btn btn-primary btn-sm" {% if not editable %}disabled{% endif %}>Update</button>
+                      {% else %}
+                        <button class="btn btn-success btn-sm">Submit</button>
+                      {% endif %}
+                    </div>
+                  </form>
+                </div>
+              {% endif %}
+            {% else %}
+              <p class="text-muted">Status: Pending</p>
             {% endif %}
           </div>
-          <div class="text-end">
-            <form method="post" action="{{ url_for('apply', task_id=t.id) }}">
-              <button class="btn btn-sm btn-outline-success">Apply</button>
-            </form>
-          </div>
-        </li>
+        </div>
       {% endfor %}
-    </ul>
-  {% else %}
-    <p class="text-muted">No tasks match your current filters.</p>
-  {% endif %}
-
-  <a href="{{ url_for('dashboard') }}" class="btn btn-link mt-3 p-0">Back to dashboard</a>
-</div>
-
+    {% else %}
+      <div class="alert alert-info">You haven’t applied for any tasks yet.</div>
+    {% endif %}
+  </div>
 {% endblock %}

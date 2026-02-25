@@ -1,5 +1,10 @@
-<!--code layout is from chatgpt-->
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
 {% block content %}
 {#
@@ -30,6 +35,7 @@
   <select name="role" class="form-select" id="roleSelect">
     <option value="student">Student</option>
     <option value="company">Company</option>
+    <option value="university">University</option>
     <option value="admin">Admin</option>
   </select>
 </div>
@@ -45,7 +51,7 @@
               <input required name="password" type="password" class="form-control" autocomplete="off">
             </div>
 
-            {# # Student-only section (hidden/disabled when role=company) #}
+            {# Student-only section #}
             <div id="studentSection" class="col-12">
               <div class="mb-3">
                 <label class="form-label">Skills</label>
@@ -65,6 +71,24 @@
               </div>
             </div>
 
+            {# University-only section #}
+            <div id="universitySection" class="col-12" style="display:none;">
+              <div class="mb-3">
+                <label class="form-label">Department</label>
+                <select name="department" class="form-select" id="departmentSelect" required>
+                  <option value="" selected disabled>Choose your department</option>
+                  <option value="Computer Science">Computer Science</option>
+                  <option value="Engineering">Engineering</option>
+                  <option value="Business">Business</option>
+                  <option value="Humanities">Humanities</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="text-muted small">
+                You must register using your official university email. Access will be limited to students in your institution.
+              </div>
+            </div>
+
             {# # Submit button #}
             <div class="col-12 d-grid">
               <button class="btn btn-primary">Create Account</button>
@@ -80,11 +104,14 @@
 </div>
 
 <script>
-  // # When role=student: show student fields
-  // # When role=company or role=admin: hide and disable student-only fields
+  // Toggle sections based on role:
+  // - Student: show student fields
+  // - University: show university fields (department required)
+  // - Others: hide both sections
   (function () {
     const roleSelect = document.getElementById('roleSelect');
-    const section = document.getElementById('studentSection');
+    const studentSection = document.getElementById('studentSection');
+    const uniSection = document.getElementById('universitySection');
 
     function setDisabled(container, disabled) {
       const inputs = container.querySelectorAll('input, textarea, select');
@@ -92,9 +119,15 @@
     }
 
     function toggle() {
-      const showStudent = roleSelect.value === 'student';
-      section.style.display = showStudent ? '' : 'none';
-      setDisabled(section, !showStudent);
+      const role = roleSelect.value;
+      const isStudent = role === 'student';
+      const isUni = role === 'university';
+
+      studentSection.style.display = isStudent ? '' : 'none';
+      setDisabled(studentSection, !isStudent);
+
+      uniSection.style.display = isUni ? '' : 'none';
+      setDisabled(uniSection, !isUni);
     }
 
     roleSelect.addEventListener('change', toggle);

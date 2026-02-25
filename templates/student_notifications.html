@@ -1,16 +1,71 @@
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
+
+{% block page_title %}Notifications{% endblock %}
+
 {% block content %}
-
-<h3>Your Notifications</h3>
-
-{% for n in notifications %}
-  <div class="alert alert-info">
-    {{ n.message }}
-    <br>
-    <small>{{ n.created_at }}</small>
+<div class="container">
+  <div class="mb-3">
+    <h2 class="mb-1">My Notifications</h2>
+    <p class="text-muted">Stay up to date with selections and reviews.</p>
   </div>
-{% else %}
-  <p>No notifications.</p>
-{% endfor %}
 
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Pending selections block -->
+  <div class="mb-4">
+    <h4 class="mb-2">Pending Selections</h4>
+    {% if pending_selected and pending_selected|length > 0 %}
+      {% for app in pending_selected %}
+        <div class="card mb-2">
+          <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <div class="fw-semibold">{{ app.task.title }}</div>
+              <div class="text-muted small">{{ app.task.company.name if app.task.company else 'Company' }}</div>
+            </div>
+            <div class="inline-actions">
+              <form method="post" action="{{ url_for('accept_selected_task', application_id=app.id) }}">
+                <button class="btn btn-primary btn-sm">Accept</button>
+              </form>
+              <form method="post" action="{{ url_for('decline_selected_task', application_id=app.id) }}">
+                <button class="btn btn-outline-secondary btn-sm">Decline</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="text-muted">No pending selections.</p>
+    {% endif %}
+  </div>
+
+  <!-- All notifications -->
+  <div class="mb-3">
+    <h4 class="mb-2">All Notifications</h4>
+    {% if notifications and notifications|length > 0 %}
+      <ul class="list-group">
+        {% for n in notifications %}
+          <li class="list-group-item d-flex justify-content-between align-items-start">
+            <span>{{ n.message }}</span>
+            <small class="text-muted">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted">No notifications yet.</p>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}
