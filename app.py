@@ -26,7 +26,7 @@ References:
 - SQLAlchemy: https://flask-sqlalchemy.palletsprojects.com/
 - Werkzeug: https://werkzeug.palletsprojects.com/
 """
-import a
+
 from werkzeug.utils import secure_filename
 
 # ============================================================================
