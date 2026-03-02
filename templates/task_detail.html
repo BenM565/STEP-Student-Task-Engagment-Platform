@@ -52,10 +52,10 @@ independently for the STEP Student Task Engagement Platform.
       <!-- Your Submission -->
       <div class="card mb-3" id="your-submission">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex justify-content-between align-items-center mb-3">
             <h4 class="mb-0">Your Submission</h4>
             <div class="status-badges">
-              {% if application.selected or application.status in ["Accepted", "selected", "selected_by_company", "accepted"] %}
+              {% if application.selected or application.status in ["Accepted", "selected", "selected_by_company", "accepted", "in_progress"] %}
                 <span class="badge bg-success">Selected</span>
               {% elif application.status == "pending" %}
                 <span class="badge bg-warning">Pending</span>
@@ -71,29 +71,37 @@ independently for the STEP Student Task Engagement Platform.
           </div>
 
           {% if application.review_status and application.review_feedback %}
-            <div class="text-muted small mb-2">Feedback: {{ application.review_feedback }}</div>
+            <div class="text-muted small mb-3">Feedback: {{ application.review_feedback }}</div>
           {% endif %}
 
-          <div class="inline-actions my-2">
+          <!-- Upload Form -->
+          {% if application.selected or application.status in ["Accepted", "selected", "selected_by_company", "in_progress"] %}
+            <div class="card bg-light mb-3">
+              <div class="card-body">
+                <h5 class="mb-3">Upload Your Work</h5>
+                <form method="POST" action="{{ url_for('student_upload_project_media', application_id=application.id) }}" enctype="multipart/form-data">
+                  <div class="input-group">
+                    <input type="file" name="file" class="form-control" required>
+                    <button class="btn btn-primary" type="submit">Upload</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          {% endif %}
+
+          <!-- View Submitted File -->
+          <div class="inline-actions my-3">
             {% if application.student_file %}
               <a class="btn btn-sm btn-outline-primary" target="_blank"
                  href="{{ url_for('static', filename='uploads/' ~ application.student_file) }}">
-                View Your File
+                <i class="bi bi-download"></i> View Your Submission
               </a>
             {% else %}
               <span class="text-muted small">You haven't uploaded a file yet.</span>
             {% endif %}
           </div>
 
-          {% if application.selected or application.status in ["Accepted", "selected", "selected_by_company"] %}
-            <form class="mt-2 d-flex flex-wrap gap-2 align-items-center"
-                  method="POST"
-                  action="{{ url_for('student_upload_media', application_id=application.id) }}"
-                  enctype="multipart/form-data">
-              <input type="file" name="file" class="form-control form-control-sm" required>
-              <button type="submit" class="btn btn-primary btn-sm">Upload Your File</button>
-            </form>
-          {% elif application.status == "pending" %}
+          {% if application.status == "pending" %}
             <p class="text-muted mb-0">Your application is pending review.</p>
           {% endif %}
         </div>
@@ -104,8 +112,8 @@ independently for the STEP Student Task Engagement Platform.
         <div class="card-body">
           <h4 class="mb-2">Apply</h4>
           <p class="text-muted">You haven't applied for this task yet.</p>
-          <form method="POST" action="{{ url_for('apply', task_id=task.id) }}">
-            <button type="submit" class="btn btn-primary">Apply</button>
+          <form method="POST" action="{{ url_for('apply_to_task', task_id=task.id) }}">
+            <button type="submit" class="btn btn-primary">Apply Now</button>
           </form>
         </div>
       </div>

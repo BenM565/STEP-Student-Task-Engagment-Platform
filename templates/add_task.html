@@ -12,13 +12,13 @@ independently for the STEP Student Task Engagement Platform.
   <div class="col-lg-8">
     <div class="card card-compact shadow-sm">
       <div class="card-body p-4">
-        <div class="mb-3">
+<div class="mb-3">
           <div class="title">Create a new task</div>
           <div class="subtitle">Share details, attach an optional spec/media, and set expected hours.</div>
         </div>
 
-
-<div class="mb-2">
+        <form method="POST" action="{{ url_for('add_task') }}" enctype="multipart/form-data">
+          <div class="mb-2">
   <label class="form-label">Title</label>
   <input name="title" required class="form-control" placeholder="e.g., Build login page with Bootstrap">
 </div>

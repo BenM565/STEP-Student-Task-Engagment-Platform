@@ -180,9 +180,9 @@ independently for the STEP Student Task Engagement Platform.
             >
               View Student Profile
             </a>
-
+            <!-- This should already be correct from our earlier fix -->
             {% if application.status == "pending" %}
-              <form method="POST" action="{{ url_for('select_applicant', application_id=application.id) }}">
+              <form method="POST" action="{{ url_for('accept_application', app_id=application.id) }}">
                 <button class="btn btn-success btn-sm">Select Student</button>
               </form>
             {% endif %}

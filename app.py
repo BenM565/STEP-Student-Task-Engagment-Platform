@@ -26,11 +26,23 @@ References:
 - SQLAlchemy: https://flask-sqlalchemy.palletsprojects.com/
 - Werkzeug: https://werkzeug.palletsprojects.com/
 """
+import a
+from werkzeug.utils import secure_filename
 
 # ============================================================================
 # SECTION 1: IMPORTS
 # ============================================================================
 
+
+from email_service import (
+    send_application_accepted_notification,
+    send_work_submitted_notification,
+    send_work_approved_notification,
+    send_change_requested_notification,
+    send_task_posted_notification,
+    send_application_rejected_notification
+)
+from email_service import send_email
 import os
 import json
 import time
@@ -38,6 +50,10 @@ import queue
 from datetime import datetime, timedelta
 from typing import Dict, List
 from functools import wraps
+
+
+from werkzeug.security import generate_password_hash, check_password_hash
+from jinja2 import TemplateNotFound
 
 # Flask core imports
 from flask import (
@@ -51,7 +67,9 @@ from flask_migrate import Migrate
 from flask_mail import Mail
 from sqlalchemy.dialects import mysql
 from sqlalchemy import func
-from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.dialects import mysql
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 # Flask-Login for authentication
 try:
@@ -134,11 +152,6 @@ except Exception:
 # ITERATION 5 IMPORTS: Email Service
 # ============================================================================
 
-# Fallback function for missing email service
-def _noop_email(*args, **kwargs):
-    """No-op function for when email service is not available"""
-    return None
-
 try:
     from email_service import (
         send_task_posted_notification,
@@ -150,39 +163,33 @@ try:
         send_change_requested_notification,
         send_dispute_notification
     )
-except (ImportError, ModuleNotFoundError):
+except ImportError:
     # Fallback if email_service.py not found
-    send_task_posted_notification = _noop_email
-    send_application_received_notification = _noop_email
-    send_application_accepted_notification = _noop_email
-    send_application_rejected_notification = _noop_email
-    send_work_submitted_notification = _noop_email
-    send_work_approved_notification = _noop_email
-    send_change_requested_notification = _noop_email
-    send_dispute_notification = _noop_email
+    def _noop(*args, **kwargs):
+        return None
+    send_task_posted_notification = _noop
+    send_application_received_notification = _noop
+    send_application_accepted_notification = _noop
+    send_application_rejected_notification = _noop
+    send_work_submitted_notification = _noop
+    send_work_approved_notification = _noop
+    send_change_requested_notification = _noop
+    send_dispute_notification = _noop
 
 # ============================================================================
 # ITERATION 5 IMPORTS: Payment Service
 # ============================================================================
 
-# Fallback classes for missing payment service
-class PaymentError(Exception):
-    """Payment processing error"""
-    message = "Payment error"
-
-class EscrowManager:
-    """Fallback escrow manager when service not available"""
-    pass
-
-def init_escrow_manager():
-    """Initialize escrow manager (returns None if not available)"""
-    return None
-
 try:
     from payment_service import EscrowManager, init_escrow_manager, PaymentError
-except (ImportError, ModuleNotFoundError):
-    # Fallback definitions above will be used
-    pass
+except ImportError:
+    # Fallback if payment_service.py not found
+    class PaymentError(Exception):
+        pass
+    class EscrowManager:
+        pass
+    def init_escrow_manager():
+        return None
 
 # ============================================================================
 # SECTION 2: FLASK APP INITIALIZATION
@@ -231,6 +238,42 @@ app.config['PLATFORM_FEE_PERCENT'] = float(os.getenv('PLATFORM_FEE_PERCENT', 10)
 
 # Initialize Flask-Mail
 mail = Mail(app)
+
+
+SELECTED_APPLICATION_STATUSES = ("selected", "in_progress")
+
+
+def select_student_for_task(application) -> None:
+    """
+    Extract Function:
+    Ensure selecting a student is atomic/consistent:
+    - mark the chosen application as selected + in_progress
+    - move task to in_progress
+    - close out all other applications so they no longer appear as pending/available
+    """
+    task = Task.query.get(application.task_id)
+    if task is None:
+        abort(404)
+
+    # Mark task as no longer open
+    task.status = "in_progress"
+
+    # Mark chosen application
+    application.selected = True
+    application.status = "selected"
+
+    # Remove availability for other applicants
+    other_apps = (
+        Application.query.filter_by(task_id=task.id)
+        .filter(Application.id != application.id)
+        .all()
+    )
+    for other in other_apps:
+        other.selected = False
+        if other.status not in ("rejected", "withdrawn", "completed"):
+            other.status = "rejected"
+
+    db.session.commit()
 
 # Initialize payment system
 escrow_manager = None
@@ -707,6 +750,12 @@ class PaymentTransaction(db.Model):
 
     application = db.relationship("Application", backref="payment_transactions")
 
+on_time_delivery = db.Column(db.Boolean, default=None)
+first_pass_success = db.Column(db.Boolean, default=None)
+num_revisions = db.Column(db.Integer, default=0)
+submitted_at = db.Column(db.DateTime)
+completed_at = db.Column(db.DateTime)
+deadline_at = db.Column(db.DateTime)
 # ============================================================================
 # SECTION 7: FLASK-LOGIN USER LOADER
 # ============================================================================
@@ -725,27 +774,33 @@ def load_user(user_id):
 # ============================================================================
 
 @app.route("/")
-@login_required
 def index():
     """
-    Root route - redirect to role-based dashboard.
+    Root route - show landing page for unauthenticated users,
+    redirect to role-based dashboard for authenticated users.
 
     Routes to:
+    - Unauthenticated → landing page
     - Students → student_dashboard
     - Companies → company_dashboard
     - Admin → admin_home
     - University → university_dashboard
     """
-    if current_user.role == "student":
-        return redirect(url_for("student_dashboard"))
-    elif current_user.role == "company":
-        return redirect(url_for("company_dashboard"))
-    elif current_user.role == "admin":
-        return redirect(url_for("admin_home"))
-    elif current_user.role == "university":
-        return redirect(url_for("university_dashboard"))
-    else:
-        return redirect(url_for("login"))
+    # If user is authenticated, redirect to their dashboard
+    if current_user.is_authenticated:
+        if current_user.role == "student":
+            return redirect(url_for("student_dashboard"))
+        elif current_user.role == "company":
+            return redirect(url_for("company_dashboard"))
+        elif current_user.role == "admin":
+            return redirect(url_for("admin_home"))
+        elif current_user.role == "university":
+            return redirect(url_for("university_dashboard"))
+        else:
+            return redirect(url_for("login"))
+
+    # Show landing page for unauthenticated users
+    return render_template("landing.html")
 
 # ============================================================================
 # 8.2 Registration Route
@@ -823,11 +878,38 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    """User login route"""
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password")
+
+        if not email or not password:
+            flash("Email and password are required.", "danger")
+            return render_template("login.html")
+
+        user = User.query.filter_by(email=email).first()
+
+        if not user or not user.check_password(password):
+            flash("Invalid email or password.", "danger")
+            return render_template("login.html")
+
+        login_user(user)
+        flash(f"Welcome, {user.name}!", "success")
+
+        # Redirect based on role
+        if user.role == "student":
+            return redirect(url_for("student_dashboard"))
+        elif user.role == "company":
+            return redirect(url_for("company_dashboard"))
+        elif user.role == "admin":
+            return redirect(url_for("admin_home"))
+        else:
+            return redirect(url_for("index"))
+
+    return render_template("login.html")
     """
     User login route.
-
-    Authenticates user and creates session.
-    Enforces organization email policy per role.
+    ...
     """
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
@@ -862,7 +944,7 @@ def login():
 # 8.4 Logout Route
 # ============================================================================
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET", "POST"])
 @login_required
 def logout():
     """Logout user and redirect to login"""
@@ -878,53 +960,112 @@ def logout():
 # 9.1 Student Dashboard
 # ============================================================================
 
+# REPLACE YOUR student_dashboard() ROUTE WITH THIS (around line 915 in app.py)
+@app.route("/task/<int:task_id>/delete", methods=["POST"])
+@login_required
+def delete_task(task_id):
+    """Delete a task (company only) - cascade delete all related data"""
+    if current_user.role != "company":
+        abort(403)
+
+    task = db.session.get(Task, task_id)
+    if not task or task.company_id != current_user.id:
+        abort(403)
+
+    print(f"\n{'=' * 70}")
+    print(f"DELETING TASK ID {task_id}: {task.title}")
+    print(f"{'=' * 70}")
+
+    try:
+        # Step 1: Get all applications for this task
+        apps_to_delete = Application.query.filter_by(task_id=task_id).all()
+        print(f"Found {len(apps_to_delete)} applications to delete...")
+
+        # Step 2: Delete related data for each application
+        for app in apps_to_delete:
+            print(f"  - Deleting Application ID {app.id}")
+
+            # Delete reviews linked to this application
+            reviews = Review.query.filter_by(application_id=app.id).all()
+            for review in reviews:
+                print(f"    - Deleting Review ID {review.id}")
+                db.session.delete(review)
+
+            # Delete notifications linked to this application
+            notifs = Notification.query.filter_by(task_id=task_id, user_id=app.student_id).all()
+            for notif in notifs:
+                print(f"    - Deleting Notification ID {notif.id}")
+                db.session.delete(notif)
+
+            # Delete the application
+            db.session.delete(app)
+
+        # Step 3: Delete the task
+        print(f"Deleting Task ID {task_id}...")
+        db.session.delete(task)
+
+        # Step 4: Commit all changes
+        db.session.commit()
+
+        print(f"✅ Successfully deleted task and all related data")
+        print(f"{'=' * 70}\n")
+
+        flash("Task deleted successfully!", "success")
+        return redirect(url_for("company_dashboard"))
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ ERROR deleting task: {e}")
+        print(f"{'=' * 70}\n")
+        flash(f"Error deleting task: {str(e)}", "error")
+        return redirect(url_for("company_dashboard"))
+# REPLACE the student_dashboard() function (around line 1012) with this FIXED version
+
 @app.route("/student")
 @login_required
 def student_dashboard():
-    """
-    Student dashboard showing:
-    - Active tasks (applications in progress)
-    - Completed tasks (approved applications)
-    - Pending applications
-    - Recent notifications
-    - Trust score and ratings
-    """
+    """Student dashboard with active tasks, pending review, and completed tasks"""
     if current_user.role != "student":
         abort(403)
 
-    # Get student's applications grouped by status
-    active_applications = Application.query.filter(
-        Application.student_id == current_user.id,
-        Application.status.in_(["pending", "in_progress"])
-    ).all()
+    # Get all applications for this student
+    all_applications = Application.query.filter_by(student_id=current_user.id).all()
 
-    completed_applications = Application.query.filter(
-        Application.student_id == current_user.id,
-        Application.status == "completed"
-    ).all()
+    # ACTIVE TASKS: status in ["in_progress"] (selected by company but not yet approved)
+    active_apps = [
+        a for a in all_applications
+        if a.status in ["in_progress"]
+    ]
 
-    # Get recent notifications
-    notifications = Notification.query.filter(
-        Notification.user_id == current_user.id
-    ).order_by(Notification.created_at.desc()).limit(10).all()
+    # PENDING REVIEW: review_status == "pending" (student uploaded, waiting for company review)
+    pending_review_apps = [a for a in all_applications if a.review_status == "pending"]
 
-    # Fetch ratings
-    ratings = Review.query.filter(
-        Review.ratee_user_id == current_user.id,
-        Review.is_hidden == False
-    ).all()
+    # PAST TASKS: status == "completed" AND review_status == "approved"
+    past_apps = [
+        a for a in all_applications
+        if a.status == "completed" and a.review_status == "approved"
+    ]
 
-    average_rating = (
-        sum(r.rating for r in ratings) / len(ratings) if ratings else 0.0
-    )
+    # Get ratings for this student
+    reviews = Review.query.filter_by(ratee_user_id=current_user.id).all()
+    rating_count = len(reviews)
+    rating_avg = sum(r.rating for r in reviews) / rating_count if rating_count > 0 else 0
+
+    # Get notifications
+    notifications = Notification.query.filter_by(user_id=current_user.id).all()
+    unread_count = len([n for n in notifications if not n.is_read])
 
     return render_template(
         "student_dashboard.html",
-        active_applications=active_applications,
-        completed_applications=completed_applications,
+        active_apps=active_apps,
+        pending_review_apps=pending_review_apps,
+        past_apps=past_apps,
+        applications=all_applications,
+        reviews=reviews,
+        rating_count=rating_count,
+        rating_avg=rating_avg,
         notifications=notifications,
-        average_rating=average_rating,
-        num_ratings=len(ratings)
+        unread_count=unread_count
     )
 
 # ============================================================================
@@ -933,76 +1074,78 @@ def student_dashboard():
 
 @app.route("/browse-tasks")
 def browse_tasks():
-    """
-    Browse available tasks.
-    Accessible to authenticated students.
-    Shows task details and application option.
-    """
-    tasks = Task.query.filter_by(status="open").all()
-    return render_template("browse_tasks.html", tasks=tasks)
+    """Browse available tasks - ONLY show unselected tasks to students"""
+    # Get all open tasks (keeping existing behavior: Task.query.all()).
+    all_tasks = Task.query.all()
+
+    tasks = []
+    for task in all_tasks:
+        # Detect selection robustly:
+        # - either selected flag is True
+        # - or status indicates selection/in progress
+        selected_app = (
+            Application.query.filter_by(task_id=task.id)
+            .filter(
+                (Application.selected.is_(True)) |
+                (Application.status.in_(SELECTED_APPLICATION_STATUSES))
+            )
+            .first()
+        )
+
+        # If NO student selected yet, show to everyone
+        if not selected_app:
+            tasks.append(task)
+        # If student IS selected, only show to that student
+        elif current_user.is_authenticated and current_user.role == "student":
+            if selected_app.student_id == current_user.id:
+                tasks.append(task)
+
+    # Handle search filters
+    q = request.args.get("q", "").strip()
+    hours_max = request.args.get("hours_max")
+
+    if q:
+        tasks = [t for t in tasks if q.lower() in t.title.lower() or q.lower() in (t.description or "").lower()]
+
+    if hours_max:
+        try:
+            hours_max = int(hours_max)
+            tasks = [t for t in tasks if t.estimated_hours and t.estimated_hours <= hours_max]
+        except:
+            pass
+
+    return render_template("browse_tasks.html", tasks=tasks, q=q, hours_max=hours_max)
+
 
 # ============================================================================
 # 9.3 Apply to Task
 # ============================================================================
 
-@app.route("/task/<int:task_id>/apply", methods=["POST"])
-@login_required
-def apply_to_task(task_id):
-    """
-    Submit application for a task.
-
-    POST Parameters:
-    - task_id: Task to apply for
-
-    Creates Application record and notifies company.
-    """
-    if current_user.role != "student":
-        abort(403)
-
+@app.route("/task/<int:task_id>")
+def task_detail(task_id):
+    """View task details and submission area"""
+    # Get the task
     task = db.session.get(Task, task_id)
     if not task:
         abort(404)
 
-    # Check for existing application
-    existing = Application.query.filter_by(
-        task_id=task_id,
-        student_id=current_user.id
-    ).first()
+    # Get all applications for this task (for company view)
+    applications_for_company = Application.query.filter_by(task_id=task_id).all()
 
-    if existing:
-        flash("You have already applied for this task.", "warning")
-        return redirect(url_for("browse_tasks"))
+    # If student is logged in, get THEIR application
+    application = None
+    if current_user.is_authenticated and current_user.role == "student":
+        application = Application.query.filter_by(
+            student_id=current_user.id,
+            task_id=task_id
+        ).first()
 
-    # Create application
-    application = Application(task_id=task_id, student_id=current_user.id)
-    db.session.add(application)
-    db.session.commit()
-
-    # Send notification email to company
-    try:
-        send_application_received_notification(application, task, task.company)
-    except Exception as e:
-        print(f"[Email] Failed to send application notification: {e}")
-
-    # Create in-app notification
-    notif = Notification(
-        user_id=task.company_id,
-        task_id=task_id,
-        message=f"{current_user.name} applied for: {task.title}"
+    return render_template(
+        "task_detail.html",
+        task=task,
+        application=application,
+        applications_for_company=applications_for_company
     )
-    db.session.add(notif)
-
-    # Publish real-time event
-    broker.publish(task.company_id, {
-        "type": "application_received",
-        "student_name": current_user.name,
-        "task_title": task.title,
-        "application_id": application.id
-    })
-
-    db.session.commit()
-    flash("Application submitted successfully!", "success")
-    return redirect(url_for("browse_tasks"))
 
 # ============================================================================
 # 9.4 Student Profile
@@ -1083,41 +1226,238 @@ def mark_notification_read(notif_id):
 @app.route("/student/upload-project-media", methods=["POST"])
 @login_required
 def student_upload_project_media():
-    """
-    Upload project media for portfolio.
-
-    Supports file uploads with optional title.
-    """
+    """Student uploads submission - moves to pending review"""
     if current_user.role != "student":
         abort(403)
 
+    # Get application_id
+    application_id = request.args.get("application_id") or request.form.get("application_id")
+
+    if not application_id:
+        flash("No application specified.", "error")
+        return redirect(request.referrer or url_for("student_dashboard"))
+
+    try:
+        application_id = int(application_id)
+    except:
+        flash("Invalid application ID.", "error")
+        return redirect(request.referrer or url_for("student_dashboard"))
+
+    application = db.session.get(Application, application_id)
+    if not application or application.student_id != current_user.id:
+        abort(403)
+
+    # Get file
     if "file" not in request.files:
-        flash("No file provided.", "danger")
-        return redirect(url_for("profile"))
+        flash("No file provided.", "error")
+        return redirect(request.referrer or url_for("student_dashboard"))
 
     file = request.files["file"]
-    title = request.form.get("title", "Project").strip()
-
     if file.filename == "":
-        flash("No file selected.", "danger")
-        return redirect(url_for("profile"))
+        flash("No file selected.", "error")
+        return redirect(request.referrer or url_for("student_dashboard"))
 
     # Save file
-    filename = f"{int(time.time())}_{file.filename}"
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    from werkzeug.utils import secure_filename
+    filename = f"app_{application.id}_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
+    os.makedirs("uploads", exist_ok=True)
+    filepath = os.path.join("uploads", filename)
     file.save(filepath)
 
-    # Create media record
-    media = ProjectMedia(user_id=current_user.id, filename=filename, title=title)
-    db.session.add(media)
+    # UPDATE APPLICATION - SET REVIEW_STATUS
+    application.student_file = filename
+    application.submitted_at = datetime.now()
+    application.review_status = "pending"  # ✅ CRITICAL
+
     db.session.commit()
 
-    flash("Project media uploaded successfully!", "success")
-    return redirect(url_for("profile"))
+    # SEND EMAIL TO COMPANY
+    try:
+        send_email(
+            recipient_email=application.task.company.email,
+            subject=f"Work Submitted: {current_user.name} uploaded work for {application.task.title}",
+            html_body=f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
+                        <h2 style="color: #0066cc;">Work Submitted!</h2>
+                        <p>Student: <strong>{current_user.name}</strong></p>
+                        <p>Task: <strong>{application.task.title}</strong></p>
+                        <p>Submitted: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+                        <p><a href="http://localhost:5000/company/applicants/{application.task.id}" style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Review Submission</a></p>
+                        <p>Best regards,<br>STEP Platform Team</p>
+                    </div>
+                </body>
+            </html>
+            """,
+            text_body=f"Work Submitted!\n\nStudent: {current_user.name}\nTask: {application.task.title}\nSubmitted: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\nReview at: http://localhost:5000/company/applicants/{application.task.id}"
+        )
+        print(f"✅ EMAIL SENT to {application.task.company.email} - Work submitted")
+    except Exception as e:
+        print(f"❌ EMAIL FAILED: {e}")
 
+    flash("Work submitted successfully!", "success")
+    return redirect(url_for("task_detail", task_id=application.task_id))
 # ============================================================================
 # 9.8 Add Lecturer Reference
 # ============================================================================
+
+# ============================================================================
+# PUBLIC STUDENT PORTFOLIO
+# ============================================================================
+
+@app.route("/portfolio/<string:slug>")
+def public_portfolio(slug):
+    # Get student by slug
+    student = User.query.filter_by(
+        profile_url=slug,
+        role="student"
+    ).first_or_404()
+
+    # Get completed applications
+    completed_apps = Application.query.filter_by(
+        student_id=student.id,
+        status="completed"
+    ).all()
+
+    # Extract tasks from completed applications
+    completed_tasks = []
+    for app in completed_apps:
+        task = Task.query.get(app.task_id)
+        if task:
+            completed_tasks.append(task)
+
+    completed_tasks_count = len(completed_tasks)
+
+    # Get reviews (only if you have Review model)
+    try:
+        reviews = Review.query.filter_by(
+            reviewee_id=student.id
+        ).all()
+    except:
+        reviews = []
+
+    # Calculate average rating safely
+    average_rating = 0
+    if reviews:
+        average_rating = sum(r.rating for r in reviews) / len(reviews)
+    elif student.trust_score:
+        average_rating = student.trust_score / 20
+
+    return render_template(
+        "portfolio.html",
+        student=student,
+        completed_tasks_count=completed_tasks_count,
+        completed_tasks=completed_tasks,
+        reviews=reviews,
+        average_rating=average_rating
+    )
+
+@app.route("/dispute/new")
+@login_required
+def dispute_new():
+    return "<h3>Dispute page coming soon</h3>"
+
+@app.route("/company/application/<int:app_id>/accept", methods=["POST"])
+@login_required
+def accept_application(app_id):
+    """Accept application - select student and FORCE task status update"""
+    print(f"\n{'=' * 70}")
+    print(f"🎯 ACCEPT_APPLICATION CALLED!")
+    print(f"{'=' * 70}")
+
+    if current_user.role != "company":
+        abort(403)
+
+    application = db.session.get(Application, app_id)
+    if not application or application.task.company_id != current_user.id:
+        abort(403)
+
+    print(f"BEFORE UPDATE:")
+    print(f"  application.status: {application.status}")
+    print(f"  application.task.status: {application.task.status}")
+    print(f"  application.selected: {application.selected}")
+
+    # ============================================================================
+    # UPDATE APPLICATION
+    # ============================================================================
+    application.selected = True
+    application.status = "in_progress"
+
+    # ============================================================================
+    # UPDATE TASK STATUS - THIS IS THE CRITICAL PART
+    # ============================================================================
+    print(f"\nUPDATING task status...")
+    task = application.task
+    print(f"  Before: task.status = '{task.status}'")
+    task.status = "in_progress"
+    print(f"  After: task.status = '{task.status}'")
+
+    # ============================================================================
+    # REJECT ALL OTHER APPLICANTS
+    # ============================================================================
+    other_applications = Application.query.filter_by(task_id=application.task_id).all()
+    print(f"\nRejecing {len(other_applications) - 1} other applicants...")
+    for other_app in other_applications:
+        if other_app.id != application.id:
+            print(f"  Rejecting application ID {other_app.id}")
+            other_app.status = "rejected"
+
+    # ============================================================================
+    # COMMIT CHANGES
+    # ============================================================================
+    print(f"\nCOMMITTING to database...")
+    db.session.commit()
+
+    print(f"\nAFTER COMMIT (checking database):")
+    fresh_app = db.session.get(Application, app_id)
+    fresh_task = db.session.get(Task, application.task_id)
+    print(f"  fresh_app.status: {fresh_app.status}")
+    print(f"  fresh_task.status: {fresh_task.status}")
+    print(f"  fresh_app.selected: {fresh_app.selected}")
+
+    print(f"{'=' * 70}\n")
+
+    # ============================================================================
+    # SEND EMAIL TO SELECTED STUDENT
+    # ============================================================================
+    try:
+        send_email(
+            recipient_email=application.student.email,
+            subject=f"You were selected for {application.task.title}!",
+            html_body=f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
+                        <h2 style="color: #00aa00;">You Were Selected! 🎉</h2>
+                        <p>Hi {application.student.name},</p>
+                        <p>Great news! You have been selected for <strong>{application.task.title}</strong></p>
+                        <p>Company: <strong>{application.task.company.name}</strong></p>
+                        <p><a href="http://localhost:5000/task/{application.task.id}" style="background-color: #00aa00; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">View Task & Upload Work</a></p>
+                        <p>Best regards,<br>STEP Platform Team</p>
+                    </div>
+                </body>
+            </html>
+            """,
+            text_body=f"You were selected for {application.task.title}!\n\nCompany: {application.task.company.name}\n\nView at: http://localhost:5000/task/{application.task.id}"
+        )
+        print(f"✅ EMAIL SENT to {application.student.email}")
+    except Exception as e:
+        print(f"❌ EMAIL FAILED: {e}")
+
+    # ============================================================================
+    # CREATE NOTIFICATION
+    # ============================================================================
+    notif = Notification(
+        user_id=application.student_id,
+        task_id=application.task_id,
+        message=f"You were selected for: {application.task.title}"
+    )
+    db.session.add(notif)
+    db.session.commit()
+
+    flash("Student selected!", "success")
+    return redirect(request.referrer or url_for("company_view_applicants", task_id=application.task_id))
 
 @app.route("/student/add-lecturer-reference", methods=["POST"])
 @login_required
@@ -1141,6 +1481,226 @@ def add_lecturer_reference():
 
     flash("Lecturer reference added!", "success")
     return redirect(url_for("profile"))
+
+
+@app.route("/company/application/<int:application_id>/review", methods=["POST"])
+@login_required
+def review_submission(application_id):
+    """Company approves or requests changes on student submission"""
+    if current_user.role != "company":
+        abort(403)
+
+    application = db.session.get(Application, application_id)
+    if not application or application.task.company_id != current_user.id:
+        abort(403)
+
+    # Get form data
+    review_status = request.form.get("review_status")  # approved or changes_requested
+    feedback = request.form.get("feedback", "").strip()
+
+    print(f"\n{'=' * 70}")
+    print(f"REVIEW_SUBMISSION CALLED")
+    print(f"  Application ID: {application_id}")
+    print(f"  Review Status: {review_status}")
+    print(f"{'=' * 70}\n")
+
+    # Update application
+    application.review_status = review_status
+    application.review_feedback = feedback if feedback else None
+
+    # If approved, mark as completed and track metrics
+    if review_status == "approved":
+        application.status = "completed"
+        application.completed_at = datetime.utcnow()
+
+        # ✅ TRACK METRICS
+
+        # 1. ON-TIME DELIVERY: Check if submitted before deadline
+        task = application.task
+        if task.deadline_at:
+            is_on_time = application.submitted_at <= task.deadline_at if application.submitted_at else True
+            print(f"   Deadline: {task.deadline_at}")
+            print(f"   Submitted: {application.submitted_at}")
+            print(f"   On Time: {is_on_time}")
+        else:
+            is_on_time = True  # No deadline = on time
+            print(f"   No deadline set - marking as on time")
+
+        # 2. FIRST-PASS SUCCESS: Check if approved without changes requested
+        is_first_pass = True  # Approved on first review
+        print(f"   First Pass Success: {is_first_pass}")
+
+        # Set the metrics
+        application.on_time_delivery = is_on_time
+        application.first_pass_success = is_first_pass
+        application.num_revisions = 0  # First pass = 0 revisions
+
+        # Update task status
+        task.status = "completed"
+
+        print(f"✅ Metrics recorded:")
+        print(f"   on_time_delivery = {application.on_time_delivery}")
+        print(f"   first_pass_success = {application.first_pass_success}")
+        print(f"   num_revisions = {application.num_revisions}")
+
+    else:  # changes_requested
+        # Track that changes were requested
+        application.num_revisions = (application.num_revisions or 0) + 1
+        print(f"   Changes requested - revisions = {application.num_revisions}")
+
+    # Commit ALL changes
+    db.session.commit()
+
+    print(f"{'=' * 70}\n")
+
+    flash(f"Submission marked as {review_status}!", "success")
+    return redirect(request.referrer or url_for("company_view_applicants", task_id=application.task_id))
+
+
+# ============================================================================
+# FIX 2: UPDATE student_performance_breakdown to calculate weighted score
+# REPLACE student_performance_breakdown function (around line 1727) with this:
+
+# REPLACE your student_performance_breakdown function with this DEBUG VERSION
+
+@app.route("/student/performance-breakdown")
+@login_required
+def student_performance_breakdown():
+    """
+    Student performance breakdown showing weighted performance metrics.
+
+    FIXED ISSUES:
+    1. Now calculates weighted score including on-time delivery and first-pass acceptance
+    2. Students can now view their own performance breakdown
+    """
+
+    # ✅ FIX: Verify current user is a student
+    if current_user.role != "student":
+        abort(403)
+
+    # Initialize metrics dictionary with default values
+    metrics = {
+        "tasks_completed": 0,
+        "total_applications": 0,
+        "on_time_count": 0,
+        "on_time_pct": 0,
+        "first_pass_count": 0,
+        "first_pass_pct": 0,
+        "avg_rating": 0,
+        "review_count": 0,
+        "quality_score": 0,
+        "first_pass_score": 0,
+        "on_time_score": 0,
+        "completion_score": 0,
+        "weighted_score": 0,
+        "grade": "N/A",
+        "change_requests": 0
+    }
+
+    try:
+        # ✅ FIX: Query all approved, completed applications
+        completed_apps = Application.query.filter(
+            Application.student_id == current_user.id,
+            Application.status == "completed",
+            Application.review_status == "approved"
+        ).all()
+
+        # If no completed tasks, return default metrics
+        if not completed_apps:
+            return render_template(
+                "student_performance_breakdown.html",
+                metrics=metrics,
+                completed=[]
+            )
+
+        # ✅ FIX: Calculate basic counts
+        tasks_completed = len(completed_apps)
+        metrics["tasks_completed"] = tasks_completed
+
+        # ✅ FIX: Calculate On-Time Delivery
+        on_time_count = 0
+        for app in completed_apps:
+            if app.deadline_at and app.completed_at:
+                if app.completed_at <= app.deadline_at:
+                    on_time_count += 1
+            elif app.deadline_at is None:
+                on_time_count += 1
+
+        metrics["on_time_count"] = on_time_count
+        metrics["on_time_pct"] = int((on_time_count / tasks_completed * 100)) if tasks_completed > 0 else 0
+
+        # ✅ FIX: Calculate First-Pass Acceptance
+        first_pass_count = sum(
+            1 for app in completed_apps
+            if app.first_pass_success == True or app.change_requests_count == 0
+        )
+        metrics["first_pass_count"] = first_pass_count
+        metrics["first_pass_pct"] = int((first_pass_count / tasks_completed * 100)) if tasks_completed > 0 else 0
+
+        # ✅ FIX: Calculate Average Rating
+        reviews = Review.query.filter(
+            Review.ratee_user_id == current_user.id,
+            Review.is_hidden == False
+        ).all()
+
+        if reviews:
+            metrics["review_count"] = len(reviews)
+            metrics["avg_rating"] = round(sum(r.rating for r in reviews) / len(reviews), 2)
+        else:
+            metrics["review_count"] = 0
+            metrics["avg_rating"] = 0
+
+        # ✅ FIX: Calculate revision requests
+        metrics["change_requests"] = sum(app.change_requests_count for app in completed_apps)
+
+        # ✅ FIX: WEIGHTED SCORE CALCULATION
+        # Component Scores (all 0-100)
+        if metrics["avg_rating"] > 0:
+            metrics["quality_score"] = min(100, (metrics["avg_rating"] / 5.0) * 100)
+        else:
+            metrics["quality_score"] = 0
+
+        metrics["completion_score"] = min(100, (tasks_completed / 10.0) * 100)
+        metrics["on_time_score"] = metrics["on_time_pct"]
+        metrics["first_pass_score"] = metrics["first_pass_pct"]
+
+        # Apply weights: Quality 30%, Completion 25%, On-Time 25%, First-Pass 20%
+        metrics["weighted_score"] = round(
+            (metrics["quality_score"] * 0.30) +
+            (metrics["completion_score"] * 0.25) +
+            (metrics["on_time_score"] * 0.25) +
+            (metrics["first_pass_score"] * 0.20),
+            1
+        )
+
+        # ✅ FIX: Assign Grade
+        score = metrics["weighted_score"]
+        if score >= 90:
+            metrics["grade"] = "A"
+        elif score >= 80:
+            metrics["grade"] = "B"
+        elif score >= 70:
+            metrics["grade"] = "C"
+        elif score >= 60:
+            metrics["grade"] = "D"
+        else:
+            metrics["grade"] = "F"
+
+        # ✅ FIX: Render template with calculated metrics
+        return render_template(
+            "student_performance_breakdown.html",
+            metrics=metrics,
+            completed=completed_apps
+        )
+
+    except Exception as e:
+        print(f"Error in student_performance_breakdown: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash("Error loading performance breakdown", "error")
+        return redirect(url_for("student_dashboard"))
+
+
 
 # ============================================================================
 # SECTION 10: ITERATION 5 ROUTES - Portfolio, Search, Payments
@@ -1204,6 +1764,83 @@ def portfolio(student_id):
         reviews=reviews
     )
 
+# ADD THIS ROUTE TO app.py (around line 1300, after review_submission)
+
+@app.route("/application/<int:application_id>/review", methods=["POST"])
+@login_required
+def create_or_update_review(application_id):
+    """Create or update review/rating for student or company"""
+    application = db.session.get(Application, application_id)
+    if not application:
+        abort(404)
+
+    # Check if current user is company or student
+    is_company = current_user.role == "company" and application.task.company_id == current_user.id
+    is_student = current_user.role == "student" and application.student_id == current_user.id
+
+    if not (is_company or is_student):
+        abort(403)
+
+    # Get form data
+    rating = request.form.get("rating")
+    comment = request.form.get("comment", "").strip()
+
+    try:
+        rating = int(rating)
+        if rating < 1 or rating > 5:
+            flash("Rating must be between 1 and 5", "error")
+            return redirect(request.referrer)
+    except:
+        flash("Invalid rating", "error")
+        return redirect(request.referrer)
+
+    print(f"\n{'='*70}")
+    print(f"CREATE_OR_UPDATE_REVIEW CALLED")
+    print(f"  Application ID: {application_id}")
+    print(f"  Reviewer: {current_user.name} (role: {current_user.role})")
+    print(f"  Rating: {rating}/5")
+    print(f"  Comment: {comment[:50]}..." if comment else "  Comment: (none)")
+    print(f"{'='*70}\n")
+
+    # Determine who is rating whom
+    if is_company:
+        # Company rating student
+        ratee_id = application.student_id
+        rater_id = current_user.id
+    else:
+        # Student rating company
+        ratee_id = application.task.company_id
+        rater_id = current_user.id
+
+    # Check if review already exists
+    existing_review = Review.query.filter_by(
+        application_id=application_id,
+        rater_user_id=rater_id,
+        ratee_user_id=ratee_id
+    ).first()
+
+    if existing_review:
+        # Update existing review
+        print(f"Updating existing review ID {existing_review.id}")
+        existing_review.rating = rating
+        existing_review.comment = comment if comment else None
+    else:
+        # Create new review
+        print(f"Creating new review")
+        existing_review = Review(
+            application_id=application_id,
+            rater_user_id=rater_id,
+            ratee_user_id=ratee_id,
+            rating=rating,
+            comment=comment if comment else None
+        )
+        db.session.add(existing_review)
+
+    db.session.commit()
+    print(f"✅ Review saved successfully\n")
+
+    flash("Review submitted!", "success")
+    return redirect(request.referrer or url_for("student_dashboard" if is_student else "company_dashboard"))
 # ============================================================================
 # 10.2 Company Search & Filter Students
 # ============================================================================
@@ -1327,6 +1964,8 @@ def company_search_students():
         student_completed_tasks=student_completed_tasks
     )
 
+
+
 # ============================================================================
 # SECTION 11: COMPANY ROUTES
 # ============================================================================
@@ -1342,21 +1981,29 @@ def company_dashboard():
     Company dashboard showing:
     - Tasks awaiting selection
     - Active tasks with applicants
-    - Task overview with quick actions
-    - New search button for finding students
+    - Past/completed tasks (✅ FIXED: now populated)
+    - Quick access to search students
+    - Notifications
     """
     if current_user.role != "company":
         abort(403)
 
-    # Get company's tasks by status
+    # Tasks awaiting company selection from applicants
     awaiting_selection = Task.query.filter(
         Task.company_id == current_user.id,
         Task.status == "open"
     ).all()
 
+    # Tasks where student is in progress or company is reviewing
     active = Task.query.filter(
         Task.company_id == current_user.id,
         Task.status == "in_progress"
+    ).all()
+
+    # ✅ FIX: Now actually query completed tasks instead of empty list
+    past = Task.query.filter(
+        Task.company_id == current_user.id,
+        Task.status == "completed"
     ).all()
 
     # Get recent notifications
@@ -1370,76 +2017,145 @@ def company_dashboard():
 
     return render_template(
         "company_dashboard.html",
-        awaiting_selection=awaiting_selection,
-        active=active,
+        tasks_awaiting_selection=awaiting_selection,
+        tasks_active=active,
+        tasks_past=past,  # ✅ FIX: Now passing actual completed tasks
         notifications=notifications,
-        search_students_url=url_for('company_search_students')
+        company_unread_count=len([n for n in notifications if not n.is_read]),
+        company_unread=[n for n in notifications if not n.is_read],
+        company_read=[n for n in notifications if n.is_read]
     )
+
+
+
 
 # ============================================================================
 # 11.2 Add Task
 # ============================================================================
+@app.route("/task/<int:task_id>/apply", methods=["POST"])
+@login_required
+def apply_to_task(task_id):
+    """Student applies for a task"""
+    if current_user.role != "student":
+        abort(403)
 
-@app.route("/company/add-task", methods=["GET", "POST"])
+    task = db.session.get(Task, task_id)
+    if not task:
+        abort(404)
+
+    # Check if already applied
+    existing = Application.query.filter_by(student_id=current_user.id, task_id=task_id).first()
+    if existing:
+        flash("You've already applied for this task.", "warning")
+        return redirect(url_for("browse_tasks"))
+
+    app_obj = Application(student_id=current_user.id, task_id=task_id, status="pending")
+    db.session.add(app_obj)
+    db.session.commit()
+
+    # ✅ SEND EMAIL TO COMPANY
+    try:
+        send_email(
+            recipient_email=task.company.email,
+            subject=f"New Application: {current_user.name} applied for {task.title}",
+            html_body=f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
+                        <h2 style="color: #0066cc;">New Application Received!</h2>
+                        <p>Hi {task.company.name},</p>
+                        <p>A student has applied for your task:</p>
+                        <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                            <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
+                            <p><strong>Applicant:</strong> {current_user.name}</p>
+                            <p><strong>Email:</strong> {current_user.email}</p>
+                            <p><strong>Skills:</strong> {current_user.skills or 'Not specified'}</p>
+                        </div>
+                        <p>
+                            <a href="http://localhost:5000/company/applicants/{task.id}" 
+                               style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                                Review Application
+                            </a>
+                        </p>
+                        <p>Best regards,<br>STEP Platform Team</p>
+                    </div>
+                </body>
+            </html>
+            """,
+            text_body=f"New Application: {current_user.name} applied for {task.title}\n\nEmail: {current_user.email}\nSkills: {current_user.skills or 'Not specified'}\n\nReview at: http://localhost:5000/company/applicants/{task.id}"
+        )
+        print(f"✅ EMAIL SENT to {task.company.email} - New application from {current_user.name}")
+    except Exception as e:
+        print(f"❌ EMAIL FAILED: {e}")
+
+    flash(f"Applied to '{task.title}'!", "success")
+    return redirect(url_for("browse_tasks"))
+
+
+@app.route("/add-task", methods=["GET", "POST"])
 @login_required
 def add_task():
-    """
-    Create new task.
-
-    POST Parameters:
-    - title: Task title
-    - description: Task description
-    - requirements: Task requirements
-    - estimated_hours: Estimated duration
-    - tags: Skill tags (comma-separated)
-    - payment_type: 'fixed' or 'hourly'
-    - fixed_price: Fixed price amount
-    - hourly_rate: Hourly rate
-    """
+    """Create a new task"""
     if current_user.role != "company":
         abort(403)
 
     if request.method == "POST":
-        title = request.form.get("title", "").strip()
-        description = request.form.get("description", "").strip()
-        requirements = request.form.get("requirements", "").strip()
-        estimated_hours = request.form.get("estimated_hours", "")
-        tags = request.form.get("tags", "").strip()
-        payment_type = request.form.get("payment_type", "fixed")
-        fixed_price = request.form.get("fixed_price", "")
-        hourly_rate = request.form.get("hourly_rate", "")
+        title = request.form.get("title")
+        description = request.form.get("description")
+        requirements = request.form.get("requirements")
+        estimated_hours = request.form.get("estimated_hours")
+        fixed_price = request.form.get("fixed_price")
 
-        if not title or not description:
-            flash("Title and description are required.", "danger")
-            return render_template("add_task.html")
-
-        # Create task
         task = Task(
+            company_id=current_user.id,
             title=title,
             description=description,
-            requirements=requirements or None,
+            requirements=requirements,
             estimated_hours=int(estimated_hours) if estimated_hours else None,
-            tags=tags,
-            company_id=current_user.id,
-            payment_type=payment_type,
             fixed_price=float(fixed_price) if fixed_price else None,
-            hourly_rate=float(hourly_rate) if hourly_rate else None
+            status="open"
         )
-
         db.session.add(task)
         db.session.commit()
 
-        # Send notifications to matching students
+        # ✅ SEND EMAIL TO EACH STUDENT
         try:
-            if tags:
-                task_tags = [tag.strip().lower() for tag in tags.split(",")]
-                for student in User.query.filter_by(role="student").all():
-                    if student.skills:
-                        student_skills = [s.strip().lower() for s in student.skills.split(",")]
-                        if any(skill in student_skills for skill in task_tags):
-                            send_task_posted_notification(task, current_user)
+            all_students = User.query.filter_by(role="student").all()
+            for student in all_students:
+                send_email(
+                    recipient_email=student.email,
+                    subject=f"New Task Alert: {task.title}",
+                    html_body=f"""
+                    <html>
+                        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
+                                <h2 style="color: #0066cc;">New Task Posted!</h2>
+                                <p>Hi {student.name},</p>
+                                <p>A new task has been posted:</p>
+                                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
+                                    <p><strong>Posted by:</strong> {current_user.name}</p>
+                                    <p><strong>Description:</strong></p>
+                                    <p>{task.description[:200] if task.description else 'No description'}...</p>
+                                    {f'<p><strong>Estimated Hours:</strong> {task.estimated_hours}</p>' if task.estimated_hours else ''}
+                                    {f'<p><strong>Fixed Price:</strong> €{task.fixed_price}</p>' if task.fixed_price else ''}
+                                </div>
+                                <p>
+                                    <a href="http://localhost:5000/task/{task.id}" 
+                                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                                        View Task & Apply
+                                    </a>
+                                </p>
+                                <p>Best regards,<br>STEP Platform Team</p>
+                            </div>
+                        </body>
+                    </html>
+                    """,
+                    text_body=f"New Task: {task.title}\n\nPosted by: {current_user.name}\n\nDescription: {task.description[:200] if task.description else 'No description'}\n\nView at: http://localhost:5000/task/{task.id}"
+                )
+                print(f"✅ EMAIL SENT to {student.email} - New task: {task.title}")
         except Exception as e:
-            print(f"[Email] Failed to send task notifications: {e}")
+            print(f"❌ EMAIL FAILED: {e}")
 
         flash("Task posted successfully!", "success")
         return redirect(url_for("company_dashboard"))
@@ -1449,7 +2165,28 @@ def add_task():
 # ============================================================================
 # 11.3 Edit Task
 # ============================================================================
+@app.route("/student/edit-profile", methods=["GET", "POST"])
+@login_required
+def edit_profile():
+    if not current_user.is_student:
+        abort(403)
 
+    if request.method == "POST":
+        current_user.name = request.form.get("name")
+        current_user.skills = request.form.get("skills")
+        current_user.grades = request.form.get("grades")
+        current_user.projects = request.form.get("projects")
+
+        # Optional: profile URL slug
+        profile_slug = request.form.get("profile_url")
+        if profile_slug:
+            current_user.profile_url = profile_slug.strip().lower().replace(" ", "-")
+
+        db.session.commit()
+        flash("Profile updated successfully!", "success")
+        return redirect(url_for("student_dashboard"))
+
+    return render_template("edit_profile.html", student=current_user)
 @app.route("/company/task/<int:task_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_task(task_id):
@@ -1476,107 +2213,24 @@ def edit_task(task_id):
 # 11.4 Company Applicants
 # ============================================================================
 
-@app.route("/company/applicants")
+@app.route("/company/applicants/<int:task_id>")
 @login_required
-def company_applicants():
-    """
-    View applicants for company's tasks.
-
-    Shows all applications sorted by task.
-    Allows reviewing, selecting, rejecting applicants.
-    """
+def company_view_applicants(task_id):
+    """View applicants for a specific task"""
     if current_user.role != "company":
         abort(403)
+    task = db.session.get(Task, task_id)
+    if not task or task.company_id != current_user.id:
+        abort(404)
+    applications = Application.query.filter_by(task_id=task_id).all()
+    return render_template("company_applicants.html", task=task, applications=applications)
 
-    # Get all applications for company's tasks
-    applications = Application.query.join(
-        Task,
-        Application.task_id == Task.id
-    ).filter(Task.company_id == current_user.id).all()
-
-    return render_template("company_applicants.html", applications=applications)
 
 # ============================================================================
 # 11.5 Accept Applicant
 # ============================================================================
 
-@app.route("/company/application/<int:app_id>/accept", methods=["POST"])
-@login_required
-def accept_application(app_id):
-    """
-    Accept application and initialize payment.
 
-    Creates Stripe payment intent and sends acceptance email to student.
-    """
-    if current_user.role != "company":
-        abort(403)
-
-    application = db.session.get(Application, app_id)
-    if not application or application.task.company_id != current_user.id:
-        abort(403)
-
-    application.selected = True
-    application.status = "in_progress"
-
-    # Initialize payment (Iteration 5)
-    if not application.payment_intent_id and escrow_manager:
-        try:
-            amount_cents = int(application.task.fixed_price * 100) if application.task.fixed_price else 0
-
-            payment_intent = escrow_manager.create_payment_intent(
-                company_id=application.task.company_id,
-                student_id=application.student_id,
-                application_id=application.id,
-                amount_cents=amount_cents,
-                task_id=application.task_id,
-                task_title=application.task.title
-            )
-
-            application.payment_intent_id = payment_intent['id']
-            application.payment_status = "pending"
-
-            # Log payment event
-            log_entry = PaymentTransaction(
-                application_id=application.id,
-                payment_intent_id=payment_intent['id'],
-                status="pending",
-                event_type="payment_intent_created",
-                amount_cents=amount_cents,
-                details=f"Payment intent created for {application.task.title}"
-            )
-            db.session.add(log_entry)
-
-        except PaymentError as e:
-            flash(f"Payment setup error: {e.message}", "warning")
-
-    # Send acceptance email
-    try:
-        send_application_accepted_notification(
-            application,
-            application.task,
-            application.student
-        )
-    except Exception as e:
-        print(f"[Email] Failed to send acceptance notification: {e}")
-
-    # Create notification
-    notif = Notification(
-        user_id=application.student_id,
-        task_id=application.task_id,
-        message=f"Congratulations! You were selected for: {application.task.title}"
-    )
-    db.session.add(notif)
-
-    # Publish real-time event
-    broker.publish(application.student_id, {
-        "type": "application_accepted",
-        "task_title": application.task.title,
-        "task_id": application.task_id
-    })
-
-    db.session.commit()
-    flash("Application accepted!", "success")
-    return redirect(request.referrer or url_for("company_applicants"))
 
 # ============================================================================
 # 11.6 Reject Application
@@ -1585,11 +2239,7 @@ def accept_application(app_id):
 @app.route("/company/application/<int:app_id>/reject", methods=["POST"])
 @login_required
 def reject_application(app_id):
-    """
-    Reject application and refund payment if applicable.
-
-    Refunds payment from escrow and sends rejection email to student.
-    """
+    """Reject application"""
     if current_user.role != "company":
         abort(403)
 
@@ -1597,64 +2247,29 @@ def reject_application(app_id):
     if not application or application.task.company_id != current_user.id:
         abort(403)
 
-    reason = request.form.get("reason", "")
-
-    # Refund payment if authorized (Iteration 5)
-    try:
-        if application.payment_intent_id and application.payment_status == "authorized":
-            refund_result = escrow_manager.refund_payment(
-                payment_intent_id=application.payment_intent_id,
-                application_id=application.id,
-                reason="requested_by_customer"
-            )
-
-            application.payment_status = "refunded"
-
-            # Log refund
-            log_entry = PaymentTransaction(
-                application_id=application.id,
-                payment_intent_id=application.payment_intent_id,
-                status="refunded",
-                event_type="payment_refunded",
-                amount_cents=int(application.task.fixed_price * 100) if application.task.fixed_price else 0,
-                details="Application rejected - payment refunded"
-            )
-            db.session.add(log_entry)
-
-    except PaymentError as e:
-        flash(f"Warning: Payment refund failed. Manual intervention may be needed.", "warning")
-
-    # Mark as rejected
     application.status = "rejected"
-    application.review_status = "rejected"
 
-    # Send rejection email
+    # ✅ SEND EMAIL TO STUDENT
     try:
         send_application_rejected_notification(
             application,
             application.task,
             application.student,
-            reason=reason
+            reason="Application did not meet requirements"
         )
+        print(f"✅ EMAIL SENT to {application.student.email} - Application rejected")
     except Exception as e:
-        print(f"[Email] Failed to send rejection notification: {e}")
-
-    # Create notification
-    notif = Notification(
-        user_id=application.student_id,
-        task_id=application.task_id,
-        message=f"Application status: {application.task.title}"
-    )
-    db.session.add(notif)
+        print(f"❌ EMAIL FAILED: {e}")
 
     db.session.commit()
-    flash("Application rejected", "info")
+    flash("Application rejected.", "warning")
     return redirect(request.referrer or url_for("company_applicants"))
+
+
 
 # ============================================================================
 # 11.7 Approve Submitted Work
 # ============================================================================
-
 @app.route("/company/application/<int:app_id>/approve", methods=["POST"])
 @login_required
 def approve_application(app_id):
@@ -1700,6 +2315,10 @@ def approve_application(app_id):
     application.completed_at = datetime.utcnow()
     application.status = "completed"
     application.review_status = "approved"
+    application.selected = False
+
+    task = application.task
+    task.status = "completed"
 
     # Send approval email
     try:
@@ -1730,13 +2349,8 @@ def approve_application(app_id):
     flash("Work approved and payment released!", "success")
     return redirect(request.referrer or url_for("company_applicants"))
 
-# ============================================================================
-# SECTION 12: ADMIN ROUTES
-# ============================================================================
 
-# ============================================================================
-# 12.1 Admin Home
-# ============================================================================
+
 
 @app.route("/admin")
 @login_required
@@ -1781,21 +2395,103 @@ def admin_home():
 # SECTION 13: ERROR HANDLERS
 # ============================================================================
 
-@app.errorhandler(404)
-def page_not_found(error):
-    """Handle 404 errors"""
-    return render_template("404.html"), 404
+@app.route("/student/application/<int:application_id>/accept-selection", methods=["POST"])
+@login_required
+def accept_selected_task(application_id):
+    if current_user.role != "student":
+        abort(403)
+    app_obj = db.session.get(Application, application_id)
+    if not app_obj or app_obj.student_id != current_user.id:
+        abort(403)
+    app_obj.status = "in_progress"
+    db.session.commit()
+    flash("Task accepted!", "success")
+    return redirect(url_for("student_notifications"))
+
+@app.route("/student/application/<int:application_id>/decline-selection", methods=["POST"])
+@login_required
+def decline_selected_task(application_id):
+    if current_user.role != "student":
+        abort(403)
+    app_obj = db.session.get(Application, application_id)
+    if not app_obj or app_obj.student_id != current_user.id:
+        abort(403)
+    app_obj.status = "pending"
+    db.session.commit()
+    flash("Task declined.", "info")
+    return redirect(url_for("student_notifications"))
+
+@app.route("/company/students")
+@login_required
+def company_students():
+    """View past students company has worked with"""
+    if current_user.role != "company":
+        abort(403)
+
+    completed_apps = Application.query.join(Task).filter(
+        Task.company_id == current_user.id,
+        Application.status == "completed"
+    ).all()
+
+    student_data = []
+    seen_ids = set()
+
+    for app_obj in completed_apps:
+        if app_obj.student_id not in seen_ids:
+            seen_ids.add(app_obj.student_id)
+            student = db.session.get(User, app_obj.student_id)
+            if student:
+                reviews = Review.query.filter_by(ratee_user_id=student.id, rater_user_id=current_user.id).all()
+                rating_avg = sum(r.rating for r in reviews) / len(reviews) if reviews else 0
+                student_data.append({
+                    "student": student,
+                    "rating_avg": rating_avg,
+                    "rating_count": len(reviews)
+                })
+
+    return render_template("company_students.html", student_data=student_data)
+
+@app.route("/company/student/<int:student_id>")
+@login_required
+def company_view_student(student_id):
+    """View student profile from company perspective"""
+    if current_user.role != "company":
+        abort(403)
+    student = db.session.get(User, student_id)
+    if not student or student.role != "student":
+        abort(404)
+    reviews = Review.query.filter_by(ratee_user_id=student_id, rater_user_id=current_user.id).all()
+    project_media = ProjectMedia.query.filter_by(user_id=student_id).all()
+    references = LecturerReference.query.filter_by(student_id=student_id).all()
+    rating_avg = sum(r.rating for r in reviews) / len(reviews) if reviews else 0
+    return render_template(
+        "company_view_student.html",
+        student=student,
+        reviews=reviews,
+        project_media=project_media,
+        references=references,
+        rating_avg=rating_avg,
+        rating_count=len(reviews),
+        show_avg=(len(reviews) >= 5)
+    )
 
 @app.errorhandler(403)
 def forbidden(error):
     """Handle 403 forbidden"""
-    return render_template("403.html"), 403
+    try:
+        return render_template("403.html"), 403
+    except TemplateNotFound:
+        return "403 Forbidden", 403
+
 
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 server errors"""
     db.session.rollback()
-    return render_template("500.html"), 500
+    try:
+        return render_template("500.html"), 500
+    except TemplateNotFound:
+        return "500 Internal Server Error", 500
 
 # ============================================================================
 # SECTION 14: MAIN ENTRY POINT

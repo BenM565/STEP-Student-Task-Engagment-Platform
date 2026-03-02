@@ -1,0 +1,120 @@
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
+{% extends "base.html" %}
+{% block page_title %}Student Details{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-1">{{ student.name }}</h3>
+      <div class="text-muted small">{{ student.email }}</div>
+    </div>
+    <a href="{{ url_for('university_students') }}" class="btn btn-outline-secondary btn-sm">← Back to Students</a>
+  </div>
+
+  <ul class="nav nav-tabs" id="stuTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tab-profile" data-bs-toggle="tab" data-bs-target="#profile" type="button" role="tab" aria-controls="profile" aria-selected="true">Profile</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-active" data-bs-toggle="tab" data-bs-target="#active" type="button" role="tab" aria-controls="active" aria-selected="false">Active</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-past" data-bs-toggle="tab" data-bs-target="#past" type="button" role="tab" aria-controls="past" aria-selected="false">Past</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-ratings" data-bs-toggle="tab" data-bs-target="#ratings" type="button" role="tab" aria-controls="ratings" aria-selected="false">Ratings</button>
+    </li>
+  </ul>
+  <div class="tab-content border border-top-0 p-3">
+    <div class="tab-pane fade show active" id="profile" role="tabpanel" aria-labelledby="tab-profile">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="mb-2"><strong>Email:</strong> {{ student.email }}</div>
+          {% if student.department %}<div class="mb-2"><strong>Department:</strong> {{ student.department }}</div>{% endif %}
+          {% if student.skills %}<div class="mb-2"><strong>Skills:</strong> {{ student.skills }}</div>{% endif %}
+          {% if student.grades %}<div class="mb-2"><strong>Grades:</strong> {{ student.grades }}</div>{% endif %}
+          {% if student.projects %}<div class="mb-2"><strong>Projects:</strong> {{ student.projects }}</div>{% endif %}
+        </div>
+        <div class="col-md-6">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="text-muted small">Average rating</div>
+              <div class="display-6">{{ '%.2f'|format(rating_avg or 0) }}</div>
+              <div class="text-muted small">Based on {{ rating_count or 0 }} review{{ (rating_count or 0) != 1 and 's' or '' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="active" role="tabpanel" aria-labelledby="tab-active">
+      {% if active %}
+        <ul class="list-group">
+          {% for a in active %}
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold">{{ a.task.title }}</div>
+                <div class="small text-muted">{{ a.task.company.name if a.task.company else 'N/A' }}</div>
+              </div>
+              <span class="badge bg-success">{{ a.status|capitalize }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-muted">No active work.</div>
+      {% endif %}
+    </div>
+
+    <div class="tab-pane fade" id="past" role="tabpanel" aria-labelledby="tab-past">
+      {% if past %}
+        <ul class="list-group">
+          {% for a in past %}
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold">{{ a.task.title }}</div>
+                <div class="small text-muted">{{ a.completed_at and ('Completed ' ~ a.completed_at.strftime('%Y-%m-%d')) }}</div>
+              </div>
+              <span class="badge bg-secondary">Completed</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-muted">No past work.</div>
+      {% endif %}
+    </div>
+
+    <div class="tab-pane fade" id="ratings" role="tabpanel" aria-labelledby="tab-ratings">
+      <div class="mb-2">Average rating: {{ '%.2f'|format(rating_avg or 0) }} ({{ rating_count or 0 }} review{{ (rating_count or 0) != 1 and 's' or '' }})</div>
+      {% if reviews %}
+        <ul class="list-group">
+          {% for r in reviews %}
+            <li class="list-group-item">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  {% for i in range(1,6) %}
+                    {% if i <= (r.rating or 0) %}
+                      <i class="bi bi-star-fill text-warning"></i>
+                    {% else %}
+                      <i class="bi bi-star text-warning"></i>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+                <div class="small text-muted">{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '' }}</div>
+              </div>
+              {% if r.comment %}<div class="mt-2">{{ r.comment }}</div>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-muted">No ratings yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

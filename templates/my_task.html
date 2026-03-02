@@ -24,8 +24,7 @@ independently for the STEP Student Task Engagement Platform.
     {% if application.student_media %}
         <p><strong>Your submission:</strong> <a href="{{ url_for('static', filename='student_uploads/' + application.student_media) }}" target="_blank">View</a></p>
     {% else %}
-        <form method="POST" action="{{ url_for('upload_student_file', application_id=application.id) }}" enctype="multipart/form-data">
-            <div class="form-group">
+        <form method="POST" action="{{ url_for('student_upload_project_media', application_id=application.id) }}">            <div class="form-group">
                 <label for="student_file">Upload Your Work:</label>
                 <input type="file" name="student_file" class="form-control-file" required>
             </div>

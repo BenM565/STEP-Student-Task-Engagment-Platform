@@ -51,8 +51,14 @@ independently for the STEP Student Task Engagement Platform.
         {% if current_user.is_authenticated %}
           {% if current_user.role == "student" %}
             <li><a class="navbar-link" href="{{ url_for('browse_tasks') }}"><i class="bi bi-search"></i> Browse Tasks</a></li>
-            <li><a class="navbar-link" href="{{ url_for('student_disputes') }}"><i class="bi bi-exclamation-triangle"></i> Disputes</a></li>
-            <li><a class="navbar-link" href="{{ url_for('student_notifications') }}"><i class="bi bi-bell"></i> Notifications</a></li>
+            <li><a class="navbar-link" href="{{ url_for('student_dashboard') }}"><i class="bi bi-exclamation-triangle"></i> Disputes</a></li>            <li>
+  <a class="navbar-link" href="{{ url_for('student_notifications') }}" style="position: relative;">
+    <i class="bi bi-bell"></i> Notifications
+    {% if unread_count and unread_count > 0 %}
+      <span class="badge bg-danger" style="position: absolute; top: -5px; right: -10px; font-size: 0.65rem;">{{ unread_count }}</span>
+    {% endif %}
+  </a>
+</li>
           {% elif current_user.role == "company" %}
             <li><a class="navbar-link" href="{{ url_for('company_dashboard') }}"><i class="bi bi-speedometer"></i> Dashboard</a></li>
             <li><a class="navbar-link" href="{{ url_for('add_task') }}"><i class="bi bi-plus-circle"></i> Post Task</a></li>
@@ -100,8 +106,8 @@ independently for the STEP Student Task Engagement Platform.
        MAIN CONTENT AREA
        Has padding-top to account for fixed navbar
        ============================================ -->
-  <main class="main-content">
-    <div class="container">
+<!-- Add margin-top to main-content -->
+<main class="main-content" style="padding-top: 100px;">    <div class="container">
 
       <!-- Back Button (if needed) -->
       {% if request.referrer %}

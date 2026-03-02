@@ -27,7 +27,7 @@ independently for the STEP Student Task Engagement Platform.
                 </p>
               {% endif %}
 
-              <form action="{{ url_for('student_upload_media', application_id=application.id) }}" method="post" enctype="multipart/form-data" class="mb-3">
+             <form method="POST" action="{{ url_for('student_upload_project_media', application_id=application.id) }}" enctype="multipart/form-data">
                 <input type="file" name="file" required class="form-control mb-2">
                 <button class="btn btn-primary btn-sm">Upload Submission</button>
               </form>

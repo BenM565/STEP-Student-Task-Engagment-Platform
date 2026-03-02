@@ -7,7 +7,7 @@ independently for the STEP Student Task Engagement Platform.
 -->
 {% extends "base.html" %}
 
-{% block page_title %}Company Dashboard{% endblock %}
+{% block page_title %}{% endblock %}
 
 {% block content %}
 <div class="container company-dashboard">
@@ -18,7 +18,7 @@ independently for the STEP Student Task Engagement Platform.
     </div>
     <a href="{{ url_for('add_task') }}" class="btn btn-primary">+ Create Task</a>
   </div>
-<a href="/company/students" class="btn btn-outline-primary">
+<a href="{{ url_for('company_students') }}" class="btn btn-outline-primary">
     View Previous Students
 </a>
 
@@ -65,7 +65,15 @@ independently for the STEP Student Task Engagement Platform.
           </div>
         </a>
       </div>
-
+<div class="quick-actions">
+  <a class="quick-card" href="{{ url_for('company_search_students') }}">  <!-- ✅ NEW -->
+    <div class="icon-bubble"><i class="bi bi-search"></i></div>
+    <div>
+      <div class="label">Search Students</div>
+      <div class="sublabel">Find and filter students</div>
+    </div>
+  </a>
+</div>
       <!-- Awaiting Selection -->
   <div class="modal fade" id="companyAcceptModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">

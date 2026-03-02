@@ -1,10 +1,3 @@
-<!--
-Initial layout structure and component scaffolding informed by AI-assisted tooling
-(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
-
-Markup, content, and final structure were reviewed, adapted, and implemented
-independently for the STEP Student Task Engagement Platform.
--->
 {% extends "base.html" %}
 {% block content %}
 <h2 class="mb-3">Available Tasks</h2>
@@ -18,7 +11,7 @@ independently for the STEP Student Task Engagement Platform.
           <i class="bi bi-check-circle-fill text-success"></i>
         </div>
         <h5 class="mb-1">Application Sent</h5>
-        <p class="text-muted mb-0">You applied to “{{ applied_task_title or 'the task' }}”. We’ll notify you of updates.</p>
+        <p class="text-muted mb-0">You applied to the task. We'll notify you of updates.</p>
       </div>
       <div class="modal-footer border-0 justify-content-center pb-4">
         <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">Great!</button>
@@ -27,6 +20,7 @@ independently for the STEP Student Task Engagement Platform.
   </div>
 </div>
 
+<!-- Search/Filter Form -->
 <form method="get" class="card filter-card p-3 shadow-sm mb-3">
   <div class="row g-2 align-items-end">
     <div class="col-md-5">
@@ -37,22 +31,13 @@ independently for the STEP Student Task Engagement Platform.
       <label class="form-label">Max hours</label>
       <input type="number" class="form-control" name="hours_max" min="1" placeholder="e.g. 10" value="{{ hours_max or '' }}">
     </div>
-    {% if current_user.is_authenticated and current_user.role == 'student' %}
-      <div class="col-md-3">
-        <div class="form-check mt-4 d-flex align-items-center gap-2">
-          <input class="form-check-input" type="checkbox" name="ai" id="ai" value="1" {% if ai_used %}checked{% endif %}>
-          <label class="form-check-label" for="ai">
-            Use AI to match with my skills
-          </label>
-        </div>
-      </div>
-    {% endif %}
     <div class="col-md-2">
       <button class="btn btn-primary w-100">Search</button>
     </div>
   </div>
 </form>
 
+<!-- Tasks List -->
 {% if tasks and tasks|length > 0 %}
   {% for task in tasks %}
     <div class="card mb-3">
@@ -78,15 +63,12 @@ independently for the STEP Student Task Engagement Platform.
           </div>
         {% endif %}
 
-        <div class="d-flex gap-2">
-          {% if current_user.is_authenticated and current_user.role == 'company' and task.company_id == current_user.id %}
-            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit Task</a>
-          {% elif current_user.is_authenticated and current_user.role == 'student' %}
-            <form method="POST" action="{{ url_for('apply', task_id=task.id) }}">
-              <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-            </form>
-          {% endif %}
-        </div>
+        <!-- Apply Button - Only for authenticated students -->
+        {% if current_user.is_authenticated and current_user.role == 'student' %}
+          <form method="POST" action="{{ url_for('apply_to_task', task_id=task.id) }}">
+            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+          </form>
+        {% endif %}
       </div>
     </div>
   {% endfor %}
@@ -96,15 +78,16 @@ independently for the STEP Student Task Engagement Platform.
 
 <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">← Back to Dashboard</a>
 
-{% if applied %}
 <script>
-  (function () {
-    var el = document.getElementById('applySuccessModal');
-    if (el) {
-      var modal = new bootstrap.Modal(el);
-      modal.show();
-    }
-  })();
+  // Show modal if user just applied
+  {% if applied %}
+    (function () {
+      var el = document.getElementById('applySuccessModal');
+      if (el) {
+        var modal = new bootstrap.Modal(el);
+        modal.show();
+      }
+    })();
+  {% endif %}
 </script>
-{% endif %}
 {% endblock %}
