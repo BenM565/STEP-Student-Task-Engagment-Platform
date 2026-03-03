@@ -26,7 +26,7 @@ References:
 - SQLAlchemy: https://flask-sqlalchemy.palletsprojects.com/
 - Werkzeug: https://werkzeug.palletsprojects.com/
 """
-
+import notifications
 from werkzeug.utils import secure_filename
 
 # ============================================================================
@@ -70,7 +70,108 @@ from sqlalchemy import func
 from sqlalchemy.dialects import mysql
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+import re
 
+import re
+
+# ONLY these domains are allowed - whitelist approach
+VALID_EMAIL_DOMAINS = {
+    # Free email providers
+    'gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'ymail.com',
+    'aol.com', 'mail.com', 'protonmail.com', 'tutanota.com',
+    'yahoo.ie', 'yahoo.co.uk', 'outlook.ie', 'gmail.co.uk',
+
+    # Ireland ISPs
+    'eircom.net', 'indigo.ie', 'tinet.ie', 'esat.net', 'ireland.com',
+    'btinternet.com', 'vodafone.ie', 'tiscali.ie',
+
+    # Irish Universities
+    'ucd.ie', 'tcd.ie', 'nuig.ie', 'ul.ie', 'dit.ie', 'dcu.ie',
+    'atu.ie', 'itsligo.ie', 'itcarlow.ie', 'ittralee.ie', 'itcork.ie',
+    'itlimerick.ie', 'tudublin.ie', 'itgalway.ie',
+
+    # UK Universities
+    'ox.ac.uk', 'cam.ac.uk', 'ac.uk',
+
+    # Add your work/company domains here
+    # 'yourcompany.ie',
+    # 'yourcompany.com',
+}
+
+
+def is_valid_email_domain(email):
+    """
+    Validate that email uses REAL domain (whitelist approach)
+
+    ONLY allows domains in VALID_EMAIL_DOMAINS or recognized institution domains
+    Blocks everything else including test/fake domains
+
+    INPUT: email string
+    OUTPUT: True if real domain, False otherwise
+    """
+    if '@' not in email:
+        return False
+
+    domain = email.split('@')[1].lower()
+
+    # BLOCK ALL fake/test domains first
+    fake_domains = {
+        'test.com', 'example.com', 'example.org', 'example.net',
+        'test.de', 'localhost', '127.0.0.1', '0.0.0.0', 'fake.com',
+        'testmail.com', 'test.mail', 'temp.com', 'temp-mail.org',
+        'maildrop.cc', 'throwaway.email', 'guerrillamail.com',
+        '10minutemail.com', 'mailinator.com', 'sharklasers.com',
+        'yopmail.com', 'tempmail.com', 'cool.com', 'test.ie',
+        'email.com', 'mail.com', 'mail.org', 'domain.com',
+        'test123.com', 'asdf.com', 'zxcv.com', 'qwerty.com',
+        'abc.com', '123.com', 'test-email.com', 'fake-email.com',
+        'noreal.com', 'notreal.com', 'spam.com', 'demo.com',
+        'test-account.com', 'dummy.com', 'fakemail.com', 'zzz.com',
+    }
+
+    # If in fake list, REJECT immediately
+    if domain in fake_domains:
+        return False
+
+    # Check against whitelist - ONLY allow if in list
+    if domain in VALID_EMAIL_DOMAINS:
+        return True
+
+    # For .ac.uk (universities), be more permissive
+    if domain.endswith('.ac.uk') or domain.endswith('.edu') or domain.endswith('.edu.au'):
+        return True
+
+    # Everything else is REJECTED
+    return False
+
+
+# ========== ALTERNATIVE: STRICTER VERSION ==========
+# If you want ONLY whitelisted domains (most secure):
+
+def is_valid_email_domain_strict(email):
+    """
+    STRICT whitelist - only allows known good domains
+    No wildcards, no exceptions
+    """
+    if '@' not in email:
+        return False
+
+    domain = email.split('@')[1].lower()
+
+    # ONLY these domains allowed
+    ALLOWED_DOMAINS = {
+        # Free providers
+        'gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'ymail.com',
+        'aol.com', 'protonmail.com', 'tutanota.com',
+        # Ireland
+        'yahoo.ie', 'outlook.ie', 'eircom.net', 'indigo.ie', 'esat.net',
+        'ucd.ie', 'tcd.ie', 'nuig.ie', 'ul.ie', 'dit.ie', 'dcu.ie',
+        'atu.ie', 'tudublin.ie',
+        # UK
+        'outlook.co.uk', 'yahoo.co.uk',
+    }
+
+    return domain in ALLOWED_DOMAINS
 # Flask-Login for authentication
 try:
     from flask_login import (
@@ -808,67 +909,62 @@ def index():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    """
-    User registration route.
-
-    Supports:
-    - Student registration (with university auto-linking)
-    - Company registration
-    - Email validation
-    - Password hashing
-    """
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
+        name = (request.form.get("name") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password")
-        role = request.form.get("role", "student").lower()
+        password = request.form.get("password") or ""
+        role = request.form.get("role") or "student"
 
+        # Basic validation
         if not name or not email or not password:
             flash("Name, email, and password are required.", "danger")
             return render_template("register.html")
 
-        # Check email uniqueness
-        existing = User.query.filter(func.lower(User.email) == email).first()
-        if existing:
-            flash("An account with this email already exists. Please log in.", "warning")
+        # Validate email format
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_regex, email):
+            flash("Please enter a valid email address format.", "danger")
+            return render_template("register.html")
+
+        # NEW: Validate email domain is REAL (not test/fake)
+        if not is_valid_email_domain(email):
+            flash(
+                "Please use a real email address (Gmail, Outlook, Yahoo, etc). "
+                "Test emails and fake domains are not allowed.",
+                "danger"
+            )
+            return render_template("register.html")
+
+        # Check if user already exists
+        if User.query.filter_by(email=email).first():
+            flash("This email is already registered.", "danger")
+            return render_template("register.html")
+
+        try:
+            user = User(name=name, email=email, role=role)
+            user.set_password(password)
+
+            # Add role-specific fields
+            if role == 'company':
+                user.company_size = request.form.get('company_size')
+                user.website = request.form.get('website')
+                user.location = request.form.get('location')
+                user.bio = request.form.get('bio')
+
+            elif role == 'student':
+                user.skills = request.form.get('skills')
+                user.grades = request.form.get('grades')
+
+            db.session.add(user)
+            db.session.commit()
+
+            flash("Registration successful! Please log in.", "success")
             return redirect(url_for("login"))
 
-        # Create user
-        user = User(name=name, email=email, role=role)
-        user.set_password(password)
-
-        # Auto-link students to university by email domain
-        if role == "student":
-            try:
-                email_domain = (email.split("@", 1)[1] or "").lower()
-                uni = University.query.filter(
-                    func.lower(University.domain) == email_domain
-                ).first()
-
-                if not uni:
-                    # Try subdomain matching
-                    for dom in [ed.domain for ed in University.query.all()]:
-                        if dom and (email_domain == dom or email_domain.endswith("." + dom)):
-                            uni = University.query.filter_by(domain=dom).first()
-                            break
-
-                if uni:
-                    user.university_id = uni.id
-                else:
-                    # Create university entry if needed
-                    parts = email_domain.split(".")
-                    base = ".".join(parts[-2:]) if len(parts) >= 2 else email_domain
-                    uni = University(name=base.upper(), domain=email_domain)
-                    db.session.add(uni)
-                    db.session.flush()
-                    user.university_id = uni.id
-            except Exception as e:
-                print(f"[Register] University linking error: {e}")
-
-        db.session.add(user)
-        db.session.commit()
-        flash(f"Registration successful! Please log in.", "success")
-        return redirect(url_for("login"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {str(e)}", "danger")
+            return render_template("register.html")
 
     return render_template("register.html")
 
@@ -1151,39 +1247,17 @@ def task_detail(task_id):
 # 9.4 Student Profile
 # ============================================================================
 
-@app.route("/profile")
-@app.route("/profile/<int:user_id>")
+@app.route('/profile')
 @login_required
-def profile(user_id=None):
-    """
-    Student profile view and edit.
+def profile():
+    """Display user profile - company or student specific"""
+    user = current_user
 
-    Shows:
-    - Basic info (name, email, university)
-    - Skills and grades
-    - Projects and portfolio media
-    - Lecturer references
-    """
-    if user_id is None:
-        user = current_user
+    if user.role == 'company':
+        return render_template('company_profile.html', user=user)
     else:
-        user = db.session.get(User, user_id)
-        if not user or user.role != "student":
-            abort(404)
-
-    edit = request.args.get("edit", 0) == "1" and user.id == current_user.id
-
-    if request.method == "POST" and edit and user.id == current_user.id:
-        user.name = request.form.get("name", user.name)
-        user.email = request.form.get("email", user.email)
-        user.skills = request.form.get("skills", user.skills)
-        user.grades = request.form.get("grades", user.grades)
-        user.projects = request.form.get("projects", user.projects)
-        db.session.commit()
-        flash("Profile updated successfully!", "success")
-        return redirect(url_for("profile", user_id=user.id))
-
-    return render_template("profile.html", user=user, edit=edit)
+        # For students and others, use existing template
+        return render_template('profile.html', user=user)
 
 # ============================================================================
 # 9.5 Student Notifications
@@ -1483,78 +1557,67 @@ def add_lecturer_reference():
     return redirect(url_for("profile"))
 
 
-@app.route("/company/application/<int:application_id>/review", methods=["POST"])
+@app.route('/company/application/<int:application_id>/review', methods=['POST'])
 @login_required
 def review_submission(application_id):
-    """Company approves or requests changes on student submission"""
-    if current_user.role != "company":
+    app_obj = Application.query.get_or_404(application_id)
+
+    if app_obj.task.company_id != current_user.id:
         abort(403)
 
-    application = db.session.get(Application, application_id)
-    if not application or application.task.company_id != current_user.id:
-        abort(403)
+    review_status = request.form.get('review_status')
+    review_feedback = request.form.get('review_feedback', '')
+    rating = request.form.get('rating', type=int)
 
-    # Get form data
-    review_status = request.form.get("review_status")  # approved or changes_requested
-    feedback = request.form.get("feedback", "").strip()
+    if review_status not in ['approved', 'changes_requested']:
+        flash('Invalid review status.', 'danger')
+        return redirect(request.referrer or url_for('company_dashboard'))
 
-    print(f"\n{'=' * 70}")
-    print(f"REVIEW_SUBMISSION CALLED")
-    print(f"  Application ID: {application_id}")
-    print(f"  Review Status: {review_status}")
-    print(f"{'=' * 70}\n")
+    try:
+        app_obj.review_status = review_status
+        app_obj.review_feedback = review_feedback
 
-    # Update application
-    application.review_status = review_status
-    application.review_feedback = feedback if feedback else None
+        if review_status == 'approved':
+            app_obj.completed_at = datetime.utcnow()
+            app_obj.status = 'completed'
+            app_obj.first_pass_success = True
 
-    # If approved, mark as completed and track metrics
-    if review_status == "approved":
-        application.status = "completed"
-        application.completed_at = datetime.utcnow()
+            # Mark task as completed (moves to past tasks)
+            task = Task.query.get(app_obj.task_id)
+            task.status = 'completed'
 
-        # ✅ TRACK METRICS
+            if rating and 1 <= rating <= 5:
+                review = Review(
+                    application_id=application_id,
+                    rater_user_id=current_user.id,
+                    ratee_user_id=app_obj.student_id,
+                    rating=rating,
+                    comment=review_feedback
+                )
+                db.session.add(review)
 
-        # 1. ON-TIME DELIVERY: Check if submitted before deadline
-        task = application.task
-        if task.deadline_at:
-            is_on_time = application.submitted_at <= task.deadline_at if application.submitted_at else True
-            print(f"   Deadline: {task.deadline_at}")
-            print(f"   Submitted: {application.submitted_at}")
-            print(f"   On Time: {is_on_time}")
+            message = f'Your submission for "{app_obj.task.title}" was approved!'
         else:
-            is_on_time = True  # No deadline = on time
-            print(f"   No deadline set - marking as on time")
+            app_obj.change_requests_count = int(app_obj.change_requests_count or 0) + 1
+            message = f'Changes requested for "{app_obj.task.title}"'
 
-        # 2. FIRST-PASS SUCCESS: Check if approved without changes requested
-        is_first_pass = True  # Approved on first review
-        print(f"   First Pass Success: {is_first_pass}")
+        db.session.commit()
 
-        # Set the metrics
-        application.on_time_delivery = is_on_time
-        application.first_pass_success = is_first_pass
-        application.num_revisions = 0  # First pass = 0 revisions
+        notification = Notification(
+            user_id=app_obj.student_id,
+            message=message,
+            task_id=app_obj.task_id
+        )
+        db.session.add(notification)
+        db.session.commit()
 
-        # Update task status
-        task.status = "completed"
+        flash('Review submitted successfully.', 'success')
+        return redirect(request.referrer or url_for('task_detail', task_id=app_obj.task_id))
 
-        print(f"✅ Metrics recorded:")
-        print(f"   on_time_delivery = {application.on_time_delivery}")
-        print(f"   first_pass_success = {application.first_pass_success}")
-        print(f"   num_revisions = {application.num_revisions}")
-
-    else:  # changes_requested
-        # Track that changes were requested
-        application.num_revisions = (application.num_revisions or 0) + 1
-        print(f"   Changes requested - revisions = {application.num_revisions}")
-
-    # Commit ALL changes
-    db.session.commit()
-
-    print(f"{'=' * 70}\n")
-
-    flash(f"Submission marked as {review_status}!", "success")
-    return redirect(request.referrer or url_for("company_view_applicants", task_id=application.task_id))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error: {str(e)}', 'danger')
+        return redirect(request.referrer or url_for('company_dashboard'))
 
 
 # ============================================================================
@@ -1977,53 +2040,44 @@ def company_search_students():
 @app.route("/company")
 @login_required
 def company_dashboard():
-    """
-    Company dashboard showing:
-    - Tasks awaiting selection
-    - Active tasks with applicants
-    - Past/completed tasks (✅ FIXED: now populated)
-    - Quick access to search students
-    - Notifications
-    """
     if current_user.role != "company":
         abort(403)
 
-    # Tasks awaiting company selection from applicants
-    awaiting_selection = Task.query.filter(
+    # Get tasks by status
+    tasks_awaiting_selection = Task.query.filter(
         Task.company_id == current_user.id,
         Task.status == "open"
     ).all()
 
-    # Tasks where student is in progress or company is reviewing
-    active = Task.query.filter(
+    tasks_active = Task.query.filter(
         Task.company_id == current_user.id,
         Task.status == "in_progress"
     ).all()
 
-    # ✅ FIX: Now actually query completed tasks instead of empty list
-    past = Task.query.filter(
+    tasks_past = Task.query.filter(
         Task.company_id == current_user.id,
         Task.status == "completed"
     ).all()
 
-    # Get recent notifications
-    notifications = (
+    # Get notifications (use notif_list to avoid naming conflicts)
+    notif_list = (
         Notification.query
         .filter(Notification.user_id == current_user.id)
         .order_by(Notification.created_at.desc())
-        .limit(10)
         .all()
     )
 
+    unread_notifs = [n for n in notif_list if not n.is_read]
+    read_notifs = [n for n in notif_list if n.is_read]
+
     return render_template(
         "company_dashboard.html",
-        tasks_awaiting_selection=awaiting_selection,
-        tasks_active=active,
-        tasks_past=past,  # ✅ FIX: Now passing actual completed tasks
-        notifications=notifications,
-        company_unread_count=len([n for n in notifications if not n.is_read]),
-        company_unread=[n for n in notifications if not n.is_read],
-        company_read=[n for n in notifications if n.is_read]
+        tasks_awaiting_selection=tasks_awaiting_selection,
+        tasks_active=tasks_active,
+        tasks_past=tasks_past,
+        company_unread_count=len(unread_notifs),
+        company_unread=unread_notifs,
+        company_read=read_notifs
     )
 
 
@@ -2165,28 +2219,56 @@ def add_task():
 # ============================================================================
 # 11.3 Edit Task
 # ============================================================================
-@app.route("/student/edit-profile", methods=["GET", "POST"])
+# ========== UPDATE YOUR edit_profile ROUTE IN app.py ==========
+# Replace your current edit_profile route with this:
+
+@app.route('/edit-profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
-    if not current_user.is_student:
-        abort(403)
+    """Edit profile - role-based"""
+    user = current_user
 
-    if request.method == "POST":
-        current_user.name = request.form.get("name")
-        current_user.skills = request.form.get("skills")
-        current_user.grades = request.form.get("grades")
-        current_user.projects = request.form.get("projects")
+    if request.method == 'POST':
+        # Common fields
+        user.name = request.form.get('name', user.name)
+        user.email = request.form.get('email', user.email)
 
-        # Optional: profile URL slug
-        profile_slug = request.form.get("profile_url")
-        if profile_slug:
-            current_user.profile_url = profile_slug.strip().lower().replace(" ", "-")
+        # Company fields only
+        if user.role == 'company':
+            user.bio = request.form.get('bio', user.bio)
+            user.company_size = request.form.get('company_size')
+            user.website = request.form.get('website')
+            user.phone = request.form.get('phone')
+            user.location = request.form.get('location')
 
-        db.session.commit()
-        flash("Profile updated successfully!", "success")
-        return redirect(url_for("student_dashboard"))
+        # Student fields only
+        elif user.role == 'student':
+            user.skills = request.form.get('skills')
+            user.grades = request.form.get('grades')
+            user.projects = request.form.get('projects')
+            user.references = request.form.get('references')
 
-    return render_template("edit_profile.html", student=current_user)
+        try:
+            db.session.commit()
+            flash('Profile updated!', 'success')
+            return redirect(url_for('profile'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error: {str(e)}', 'danger')
+
+    # GET - show appropriate template
+    if user.role == 'company':
+        return render_template('company_edit_profile.html', user=user)
+    elif user.role == 'student':
+        return render_template('student_edit_profile.html', user=user)
+    else:
+        return render_template('edit_profile.html', user=user)
+
+
+# ========== ALSO UPDATE YOUR database model ==========
+# Add these fields to your User model if they don't exist:
+
+
 @app.route("/company/task/<int:task_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_task(task_id):
@@ -2395,6 +2477,53 @@ def admin_home():
 # SECTION 13: ERROR HANDLERS
 # ============================================================================
 
+@app.route('/company-disputes')
+@login_required
+def company_disputes():
+    """Display all disputes raised against the company"""
+    if current_user.role != 'company':
+        abort(403)
+
+    disputes = Dispute.query.filter(
+        Dispute.against_user_id == current_user.id
+    ).order_by(Dispute.created_at.desc()).all()
+
+    return render_template('company_disputes.html', disputes=disputes)
+
+
+@app.route('/company-disputes/<int:dispute_id>')
+@login_required
+def company_dispute_detail(dispute_id):
+    """View specific dispute detail"""
+    if current_user.role != 'company':
+        abort(403)
+
+    dispute = Dispute.query.get_or_404(dispute_id)
+
+    if dispute.against_user_id != current_user.id:
+        abort(403)
+
+    return render_template('company_dispute_detail.html', dispute=dispute)
+
+@app.route('/disputes')
+@login_required
+def disputes_view():
+    """Route dispatcher for disputes based on user role"""
+    user = current_user
+
+    if user.role == 'student':
+        return redirect(url_for('student_disputes'))
+    elif user.role == 'company':
+        return redirect(url_for('company_disputes'))
+    elif user.role == 'admin':
+        return redirect(url_for('admin_disputes'))
+    elif user.role == 'university':
+        try:
+            return redirect(url_for('university_disputes'))
+        except:
+            return redirect(url_for('university_dashboard'))
+    else:
+        abort(403)
 @app.route("/student/application/<int:application_id>/accept-selection", methods=["POST"])
 @login_required
 def accept_selected_task(application_id):
@@ -2500,11 +2629,14 @@ def internal_error(error):
 if __name__ == "__main__":
     """
     Run Flask development server.
-    
+
     For production, use a WSGI server like Gunicorn:
     $ gunicorn app:app
     """
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # Ensure tables exist BEFORE starting the dev server.
+    # Long-term: prefer `flask db upgrade`, but this prevents "table doesn't exist"
+    # crashes during local development.
+    with app.app_context():
+        db.create_all()
 
-with app.app_context():
-    db.create_all()
+    app.run(debug=True, host="0.0.0.0", port=5000)

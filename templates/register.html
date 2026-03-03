@@ -1,138 +1,169 @@
-<!--
-Initial layout structure and component scaffolding informed by AI-assisted tooling
-(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
-
-Markup, content, and final structure were reviewed, adapted, and implemented
-independently for the STEP Student Task Engagement Platform.
--->
 {% extends "base.html" %}
 {% block content %}
-{#
-# Template: register.html
-# Purpose: Company sign-up = only Name, Email, Password. Student sign-up shows student fields.
-# Notes:
-# - Student fields are hidden/disabled when Company is selected to avoid confusion and accidental posts.
-#}
-
-<div class="row justify-content-center">
-  <div class="col-lg-8">
-    <div class="card shadow-sm">
-      <div class="card-body p-4">
-        <h5 class="mb-3">Create your account</h5>
-
-        <form method="post" action="{{ url_for('register') }}">
+<div class="row justify-content-center mt-5">
+  <div class="col-lg-7">
+    <div class="card border-0 shadow">
+      <div class="card-body p-5">
+        <h3 class="text-center mb-4">Create your account</h3>
+        <form method="post" action="{{ url_for('register') }}" enctype="multipart/form-data">
           <div class="row g-3">
-
-            {# # Name input (required for all roles) #}
             <div class="col-md-6">
-              <label class="form-label">Name</label>
-              <input required name="name" class="form-control">
-            </div>
-
-            {# Role selector (student/company/admin). JS below toggles student fields #}
-<div class="col-md-6">
-  <label class="form-label">Role</label>
-  <select name="role" class="form-select" id="roleSelect">
-    <option value="student">Student</option>
-    <option value="company">Company</option>
-    <option value="university">University</option>
-    <option value="admin">Admin</option>
-  </select>
-</div>
-
-
-            {# # Email and password (both roles) #}
-            <div class="col-md-6">
-              <label class="form-label">Email</label>
-              <input required name="email" type="email" class="form-control" placeholder="you@example.ie" autocomplete="off">
+              <label class="form-label fw-semibold">Name</label>
+              <input required name="name" class="form-control form-control-lg" placeholder="Full name">
             </div>
             <div class="col-md-6">
-              <label class="form-label">Password</label>
-              <input required name="password" type="password" class="form-control" autocomplete="off">
+              <label class="form-label fw-semibold">Role</label>
+              <select name="role" class="form-select form-select-lg" id="roleSelect">
+                <option value="student">Student</option>
+                <option value="company">Company</option>
+                <option value="university">University</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Email</label>
+              <input required name="email" type="email" class="form-control form-control-lg" placeholder="you@example.ie">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Password</label>
+              <input required name="password" type="password" class="form-control form-control-lg" placeholder="••••••••">
             </div>
 
-            {# Student-only section #}
+            <!-- COMPANY FIELDS -->
+            <div id="companySection" class="col-12" style="display:none;">
+              <div class="card bg-light border-0 p-4">
+                <h5 class="mb-3"><i class="bi bi-building me-2"></i> Company Information</h5>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Company Size</label>
+                  <select name="company_size" class="form-select">
+                    <option value="">Select size...</option>
+                    <option value="startup">Startup (1-50)</option>
+                    <option value="small">Small (51-200)</option>
+                    <option value="medium">Medium (201-1000)</option>
+                    <option value="large">Large (1000+)</option>
+                  </select>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Website</label>
+                  <input type="url" name="website" class="form-control" placeholder="https://www.example.com">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Location</label>
+                  <input type="text" name="location" class="form-control" placeholder="Dublin, Ireland">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Description</label>
+                  <textarea name="bio" class="form-control" rows="3" placeholder="About your company..."></textarea>
+                </div>
+                <div class="mb-3">
+                  <label for="logo" class="form-label fw-semibold">Company Logo</label>
+                  <input type="file" id="logo" name="logo" class="form-control" accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml">
+                  <small class="text-muted d-block mt-2">PNG, JPG, GIF, SVG (Max 5MB) - Square 200x200px recommended</small>
+                </div>
+                <div id="logoPreview" style="display: none;" class="mb-3">
+                  <label class="form-label fw-semibold">Preview</label>
+                  <div class="card bg-white border p-3 text-center">
+                    <img id="logoPreviewImg" class="img-fluid rounded" style="max-width: 150px; max-height: 150px; object-fit: contain;">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- STUDENT FIELDS -->
             <div id="studentSection" class="col-12">
-              <div class="mb-3">
-                <label class="form-label">Skills</label>
-                <input name="skills" class="form-control" placeholder="e.g., Python, SQL, Excel">
-              </div>
-              <div class="mb-3">
-                <label class="form-label">Grades</label>
-                <input name="grades" class="form-control" placeholder="e.g., 1:1">
-              </div>
-              <div class="mb-3">
-                <label class="form-label">Projects</label>
-                <textarea name="projects" class="form-control" rows="2" placeholder="Briefly describe notable projects"></textarea>
-              </div>
-              <div class="mb-3">
-                <label class="form-label">References</label>
-                <textarea name="references" class="form-control" rows="2" placeholder="Optional references or links"></textarea>
+              <div class="card bg-light border-0 p-4">
+                <h5 class="mb-3"><i class="bi bi-mortarboard me-2"></i> Student Information</h5>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Skills</label>
+                  <input name="skills" class="form-control" placeholder="Python, SQL, Excel">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Grades</label>
+                  <input name="grades" class="form-control" placeholder="1:1">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Projects</label>
+                  <textarea name="projects" class="form-control" rows="2" placeholder="Describe projects"></textarea>
+                </div>
+                <div class="mb-0">
+                  <label class="form-label fw-semibold">References</label>
+                  <textarea name="references" class="form-control" rows="2" placeholder="Links or references"></textarea>
+                </div>
               </div>
             </div>
 
-            {# University-only section #}
+            <!-- UNIVERSITY FIELDS -->
             <div id="universitySection" class="col-12" style="display:none;">
-              <div class="mb-3">
-                <label class="form-label">Department</label>
-                <select name="department" class="form-select" id="departmentSelect" required>
-                  <option value="" selected disabled>Choose your department</option>
-                  <option value="Computer Science">Computer Science</option>
-                  <option value="Engineering">Engineering</option>
-                  <option value="Business">Business</option>
-                  <option value="Humanities">Humanities</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-              <div class="text-muted small">
-                You must register using your official university email. Access will be limited to students in your institution.
+              <div class="card bg-light border-0 p-4">
+                <h5 class="mb-3"><i class="bi bi-building-check me-2"></i> University</h5>
+                <div class="mb-0">
+                  <label class="form-label fw-semibold">Department</label>
+                  <select name="department" class="form-select">
+                    <option value="">Choose department</option>
+                    <option value="Computer Science">Computer Science</option>
+                    <option value="Engineering">Engineering</option>
+                    <option value="Business">Business</option>
+                    <option value="Humanities">Humanities</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            {# # Submit button #}
             <div class="col-12 d-grid">
-              <button class="btn btn-primary">Create Account</button>
+              <button type="submit" class="btn btn-primary btn-lg fw-semibold">Create Account</button>
             </div>
           </div>
         </form>
-
         <hr>
-        <p class="mb-0">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+        <p class="text-center text-muted mb-0">
+          Have account? <a href="{{ url_for('login') }}" class="fw-semibold">Log in</a>
+        </p>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-  // Toggle sections based on role:
-  // - Student: show student fields
-  // - University: show university fields (department required)
-  // - Others: hide both sections
-  (function () {
-    const roleSelect = document.getElementById('roleSelect');
-    const studentSection = document.getElementById('studentSection');
-    const uniSection = document.getElementById('universitySection');
+  const roleSelect = document.getElementById('roleSelect');
+  const logoInput = document.getElementById('logo');
+  const logoPreview = document.getElementById('logoPreview');
+  const logoPreviewImg = document.getElementById('logoPreviewImg');
 
-    function setDisabled(container, disabled) {
-      const inputs = container.querySelectorAll('input, textarea, select');
-      inputs.forEach(el => el.disabled = disabled);
+  function updateSections() {
+    const role = roleSelect.value;
+    document.getElementById('studentSection').style.display = role === 'student' ? '' : 'none';
+    document.getElementById('companySection').style.display = role === 'company' ? '' : 'none';
+    document.getElementById('universitySection').style.display = role === 'university' ? '' : 'none';
+  }
+
+  logoInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg+xml'];
+      if (!validTypes.includes(file.type)) {
+        alert('Invalid file type');
+        logoInput.value = '';
+        logoPreview.style.display = 'none';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File too large');
+        logoInput.value = '';
+        logoPreview.style.display = 'none';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        logoPreviewImg.src = e.target.result;
+        logoPreview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    } else {
+      logoPreview.style.display = 'none';
     }
+  });
 
-    function toggle() {
-      const role = roleSelect.value;
-      const isStudent = role === 'student';
-      const isUni = role === 'university';
-
-      studentSection.style.display = isStudent ? '' : 'none';
-      setDisabled(studentSection, !isStudent);
-
-      uniSection.style.display = isUni ? '' : 'none';
-      setDisabled(uniSection, !isUni);
-    }
-
-    roleSelect.addEventListener('change', toggle);
-    toggle();
-  })();
+  roleSelect.addEventListener('change', updateSections);
+  updateSections();
 </script>
-
 {% endblock %}
