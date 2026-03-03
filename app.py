@@ -26,7 +26,6 @@ References:
 - SQLAlchemy: https://flask-sqlalchemy.palletsprojects.com/
 - Werkzeug: https://werkzeug.palletsprojects.com/
 """
-import notifications
 from werkzeug.utils import secure_filename
 
 # ============================================================================
