@@ -298,8 +298,11 @@ except ImportError:
 app = Flask(__name__)
 
 # Database configuration
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///step.db")
-
+# Database: SQLite by default, PostgreSQL if DATABASE_URL is set
+_db_url = os.getenv("DATABASE_URL")
+if not _db_url or _db_url.strip() == "":
+    _db_url = "sqlite:///step.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
@@ -390,6 +393,18 @@ migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
+# ============================================================================
+# AUTO-INITIALIZE DATABASE ON STARTUP
+# ============================================================================
+
+@app.before_request
+def initialize_db():
+    """Create database tables automatically if they don't exist."""
+    try:
+        db.session.execute("SELECT 1 FROM user LIMIT 1")
+    except Exception:
+        db.create_all()
+        db.session.commit()
 # ============================================================================
 # SECTION 5: REAL-TIME EVENTS (SSE) - Server-Sent Events Broker
 # ============================================================================
