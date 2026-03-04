@@ -696,7 +696,7 @@ class LecturerReference(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     lecturer_name = db.Column(db.String(150), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 
     # Relationship with explicit backref
     student = db.relationship(
@@ -2419,7 +2419,7 @@ def edit_profile():
     if user.role == 'company':
         return render_template('company_edit_profile.html', user=user)
     elif user.role == 'student':
-        return render_template('student_edit_profile.html', user=user)
+        return render_template('edit_profile.html', user=user)
     else:
         return render_template('edit_profile.html', user=user)
 
