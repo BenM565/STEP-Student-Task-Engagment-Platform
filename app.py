@@ -516,7 +516,6 @@ class User(UserMixin, db.Model):
     headline = db.Column(db.String(150))  # e.g., "Full-Stack Developer"
     bio = db.Column(db.Text)  # About section
     skills = db.Column(db.Text)  # Comma-separated skills
-    university = db.Column(db.String(200))
     experience = db.Column(db.JSON)  # JSON array of work experience
     verified = db.Column(db.Boolean, default=False)
     # University linkage
@@ -1272,8 +1271,11 @@ def profile():
 
     if user.role == 'company':
         return render_template('company_profile.html', user=user)
+    elif user.role == 'student':
+        # Redirect students to their portfolio editor
+        return redirect(url_for('edit_portfolio'))
     else:
-        # For students and others, use existing template
+        # For other roles
         return render_template('profile.html', user=user)
 
 # ============================================================================
@@ -2384,44 +2386,73 @@ def add_task():
 @app.route('/edit-profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
-    """Edit profile - role-based"""
-    user = current_user
+    """
+    Edit user profile based on role
 
+    GET: Display edit form
+    POST: Update profile
+    """
     if request.method == 'POST':
-        # Common fields
-        user.name = request.form.get('name', user.name)
-        user.email = request.form.get('email', user.email)
-
-        # Company fields only
-        if user.role == 'company':
-            user.bio = request.form.get('bio', user.bio)
-            user.company_size = request.form.get('company_size')
-            user.website = request.form.get('website')
-            user.phone = request.form.get('phone')
-            user.location = request.form.get('location')
-
-        # Student fields only
-        elif user.role == 'student':
-            user.skills = request.form.get('skills')
-            user.grades = request.form.get('grades')
-            user.projects = request.form.get('projects')
-            user.references = request.form.get('references')
-
         try:
+            # Get user from database (not from current_user proxy)
+            user = db.session.get(User, current_user.id)
+            if not user:
+                abort(404)
+
+            # Update basic info
+            user.name = request.form.get('name', user.name)
+            user.email = request.form.get('email', user.email)
+
+            # Student-specific fields
+            if user.role == 'student':
+                user.university = request.form.get('university')
+                user.grades = request.form.get('grades')
+                user.projects = request.form.get('projects')
+
+                # Handle password change
+                current_password = request.form.get('current_password')
+                new_password = request.form.get('new_password')
+                confirm_password = request.form.get('confirm_password')
+
+                if new_password:
+                    # Verify current password
+                    if not current_password or not check_password_hash(user.password, current_password):
+                        flash('Current password is incorrect', 'danger')
+                        return redirect(url_for('edit_profile'))
+
+                    # Verify new passwords match
+                    if new_password != confirm_password:
+                        flash('New passwords do not match', 'danger')
+                        return redirect(url_for('edit_profile'))
+
+                    # Update password
+                    user.password = generate_password_hash(new_password)
+                    flash('Password updated successfully!', 'success')
+
+            # Company-specific fields
+            elif user.role == 'company':
+                user.company_name = request.form.get('company_name')
+                user.industry = request.form.get('industry')
+                user.bio = request.form.get('bio')
+
             db.session.commit()
-            flash('Profile updated!', 'success')
-            return redirect(url_for('profile'))
+            flash('Profile updated successfully!', 'success')
+
         except Exception as e:
             db.session.rollback()
-            flash(f'Error: {str(e)}', 'danger')
+            flash(f'Error updating profile: {str(e)}', 'danger')
+            import traceback
+            traceback.print_exc()
 
-    # GET - show appropriate template
-    if user.role == 'company':
-        return render_template('company_edit_profile.html', user=user)
-    elif user.role == 'student':
-        return render_template('edit_profile.html', user=user)
+        return redirect(url_for('edit_profile'))
+
+    # GET request - display form based on role
+    if current_user.role == 'student':
+        return render_template('student_edit_profile.html')
+    elif current_user.role == 'company':
+        return render_template('company_edit_profile.html', user=current_user)
     else:
-        return render_template('edit_profile.html', user=user)
+        return render_template('edit_profile.html', user=current_user)
 
 
 # ========== ALSO UPDATE YOUR database model ==========
