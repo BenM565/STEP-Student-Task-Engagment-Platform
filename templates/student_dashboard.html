@@ -1,28 +1,39 @@
 <!--
-Initial layout structure and component scaffolding informed by AI-assisted tooling
-(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
-
-Markup, content, and final structure were reviewed, adapted, and implemented
-independently for the STEP Student Task Engagement Platform.
+Student Dashboard - UPDATED
+Removed modal popup, replaced with direct navigation to edit_portfolio page
 -->
 {% extends "base.html" %}
 {% block content %}
 
 <div class="container mt-4">
 
-  <!-- WELCOME SECTION (EXISTING) -->
+  <!-- WELCOME SECTION -->
   <div class="welcome-section text-center mb-5">
     <h1 class="dashboard-title">Welcome back, {{ current_user.name }}! 👋</h1>
     <p class="dashboard-subtitle">Here's your performance overview</p>
   </div>
 
+  <!-- PORTFOLIO QUICK ACCESS CARD - DIRECT LINK (NO MODAL) -->
+  <div class="portfolio-quick-access mb-5">
+    <div class="card border-primary shadow-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+      <div class="card-body d-flex justify-content-between align-items-center p-4">
+        <div>
+          <h5 class="card-title mb-2">✨ Build Your Portfolio</h5>
+          <p class="card-text mb-0">Showcase your skills, projects, and achievements to attract companies</p>
+        </div>
+        <div>
+          <a href="{{ url_for('edit_portfolio') }}" class="btn btn-light btn-lg">
+            <i class="bi bi-pencil-square"></i> Manage Portfolio
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
 
-
-  <!-- PERFORMANCE SNAPSHOT (EXISTING) -->
+  <!-- PERFORMANCE SNAPSHOT -->
   <div class="performance-card">
     <div class="card-header-clean">
       <h2 class="section-title">Performance Snapshot</h2>
-      </a>
     </div>
 
     <div class="stats-grid">
@@ -45,8 +56,7 @@ independently for the STEP Student Task Engagement Platform.
     </div>
   </div>
 
-
-  <!-- RATING CARD (EXISTING) -->
+  <!-- RATING CARD -->
   <div class="rating-card">
     <h2 class="section-title text-center mb-4">Your Rating</h2>
 
@@ -87,7 +97,7 @@ independently for the STEP Student Task Engagement Platform.
 
   <hr class="my-5">
 
-  <!-- ACTIVE TASKS SECTION (NEW - FIXED) -->
+  <!-- ACTIVE TASKS SECTION -->
   <div class="active-tasks-section mb-5">
     <h3 class="section-title mb-3">Active Tasks</h3>
 
@@ -95,7 +105,6 @@ independently for the STEP Student Task Engagement Platform.
       {% for app in active_apps %}
         <div class="card mb-3 shadow-sm">
           <div class="card-body">
-            <!-- Header with title and status -->
             <div class="d-flex justify-content-between align-items-start mb-3">
               <div>
                 <h5 class="mb-1">{{ app.task.title }}</h5>
@@ -104,12 +113,10 @@ independently for the STEP Student Task Engagement Platform.
               <span class="badge bg-success">Selected</span>
             </div>
 
-            <!-- Task description -->
             {% if app.task.description %}
               <p class="mb-3">{{ app.task.description }}</p>
             {% endif %}
 
-            <!-- Company Media -->
             {% if app.media_file %}
               <div class="mb-3">
                 <h6 class="mb-2">Company Media</h6>
@@ -119,7 +126,6 @@ independently for the STEP Student Task Engagement Platform.
               </div>
             {% endif %}
 
-            <!-- Upload Work Section -->
             <div class="mb-3">
               <h6 class="mb-2">Your Submission</h6>
               <form method="POST" action="{{ url_for('student_upload_project_media', application_id=app.id) }}" enctype="multipart/form-data">
@@ -130,7 +136,6 @@ independently for the STEP Student Task Engagement Platform.
               </form>
             </div>
 
-            <!-- View Uploaded File -->
             {% if app.student_file %}
               <div class="mb-3">
                 <h6 class="mb-2">Your Uploaded File</h6>
@@ -140,7 +145,6 @@ independently for the STEP Student Task Engagement Platform.
               </div>
             {% endif %}
 
-            <!-- Review Status -->
             {% if app.review_status %}
               <div class="alert alert-info mb-0">
                 <strong>Review Status:</strong>
@@ -167,7 +171,7 @@ independently for the STEP Student Task Engagement Platform.
     {% endif %}
   </div>
 
-  <!-- PENDING REVIEW SECTION (NEW - FIXED) -->
+  <!-- PENDING REVIEW SECTION -->
   <div class="pending-review-section mb-5">
     <h3 class="section-title mb-3">Pending Review</h3>
 
@@ -175,7 +179,6 @@ independently for the STEP Student Task Engagement Platform.
       {% for app in pending_review_apps %}
         <div class="card mb-3 shadow-sm border-warning">
           <div class="card-body">
-            <!-- Header with title and status -->
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div>
                 <h5 class="mb-1">{{ app.task.title }}</h5>
@@ -184,14 +187,12 @@ independently for the STEP Student Task Engagement Platform.
               <span class="badge bg-warning">Awaiting Review</span>
             </div>
 
-            <!-- Submission info -->
             {% if app.submitted_at %}
               <p class="text-muted small mb-3">
                 <strong>Submitted:</strong> {{ app.submitted_at.strftime('%Y-%m-%d %H:%M') }}
               </p>
             {% endif %}
 
-            <!-- View submitted file -->
             {% if app.student_file %}
               <div class="mb-3">
                 <h6 class="mb-2">Your Submission</h6>
@@ -201,7 +202,6 @@ independently for the STEP Student Task Engagement Platform.
               </div>
             {% endif %}
 
-            <!-- Review feedback if available -->
             {% if app.review_feedback %}
               <div class="alert alert-info mb-0">
                 <strong>Company Feedback:</strong>
@@ -219,47 +219,45 @@ independently for the STEP Student Task Engagement Platform.
   </div>
 
   <!-- PAST TASKS / COMPLETED SECTION -->
-<div class="past-tasks-section mb-5">
-  <h3 class="section-title mb-3">Past Tasks</h3>
+  <div class="past-tasks-section mb-5">
+    <h3 class="section-title mb-3">Past Tasks</h3>
 
-  {% if past_apps and past_apps|length > 0 %}
-    {% for app in past_apps %}
-      <div class="card mb-3 shadow-sm border-success">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-start mb-2">
-            <div>
-              <h5 class="mb-1">{{ app.task.title }}</h5>
-              <p class="text-muted small mb-0">{{ app.task.company.name }}</p>
+    {% if past_apps and past_apps|length > 0 %}
+      {% for app in past_apps %}
+        <div class="card mb-3 shadow-sm border-success">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <h5 class="mb-1">{{ app.task.title }}</h5>
+                <p class="text-muted small mb-0">{{ app.task.company.name }}</p>
+              </div>
+              <span class="badge bg-success">Completed ✓</span>
             </div>
-            <span class="badge bg-success">Completed ✓</span>
+
+            {% if app.student_file %}
+              <div class="mb-3">
+                <h6 class="mb-2">Your Submission</h6>
+                <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-download"></i> View Submission
+                </a>
+              </div>
+            {% endif %}
+
+            {% if app.review_feedback %}
+              <div class="alert alert-success mb-0">
+                <strong>Company Feedback:</strong>
+                <p class="mb-0 mt-2">{{ app.review_feedback }}</p>
+              </div>
+            {% endif %}
           </div>
-
-          <!-- Submitted file -->
-          {% if app.student_file %}
-            <div class="mb-3">
-              <h6 class="mb-2">Your Submission</h6>
-              <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-download"></i> View Submission
-              </a>
-            </div>
-          {% endif %}
-
-          <!-- Company feedback -->
-          {% if app.review_feedback %}
-            <div class="alert alert-success mb-0">
-              <strong>Company Feedback:</strong>
-              <p class="mb-0 mt-2">{{ app.review_feedback }}</p>
-            </div>
-          {% endif %}
         </div>
+      {% endfor %}
+    {% else %}
+      <div class="alert alert-light border">
+        <p class="mb-0">No completed tasks yet. Complete your active tasks to see them here!</p>
       </div>
-    {% endfor %}
-  {% else %}
-    <div class="alert alert-light border">
-      <p class="mb-0">No completed tasks yet. Complete your active tasks to see them here!</p>
-    </div>
-  {% endif %}
-</div>
+    {% endif %}
+  </div>
 
   <!-- Browse Tasks Button -->
   <div class="mb-4">
@@ -268,5 +266,60 @@ independently for the STEP Student Task Engagement Platform.
     </a>
   </div>
 </div>
+
+<!-- CUSTOM STYLES -->
+<style>
+  .portfolio-quick-access {
+    animation: slideIn 0.5s ease-in-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .dashboard-title {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #333;
+  }
+
+  .dashboard-subtitle {
+    font-size: 1.1rem;
+    color: #666;
+  }
+
+  .stat-box {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid #e0e0e0;
+  }
+
+  .stat-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+  }
+
+  .stat-active { color: #007bff; }
+  .stat-pending { color: #ffc107; }
+  .stat-completed { color: #28a745; }
+  .stat-rating { color: #e91e63; }
+
+  .stat-label {
+    font-size: 0.9rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
 
 {% endblock %}

@@ -1,0 +1,305 @@
+<!--
+EDIT STUDENT PORTFOLIO PAGE
+============================
+Dedicated page for students to build and manage their public portfolio.
+Students can add skills, projects, experience, and bio information.
+
+Access: Logged-in students only
+URL: /student/portfolio/edit
+
+Features:
+- Skills management (add/edit comma-separated skills)
+- Portfolio projects (add with title, description, links, files)
+- Work experience (job title, company, dates)
+- About section (headline, bio, university)
+- View existing projects with delete option
+- Real-time preview of how portfolio looks
+-->
+
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-5 mb-5">
+  <!-- PAGE HEADER -->
+  <div class="row mb-5">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h1 class="mb-2">✨ Build Your Portfolio</h1>
+          <p class="text-muted">Showcase your skills, projects, and achievements to attract companies</p>
+        </div>
+        <a href="{{ url_for('portfolio', student_id=current_user.id) }}" class="btn btn-primary btn-lg" target="_blank">
+          <i class="bi bi-eye"></i> View Public Portfolio
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="row">
+    <!-- EDITING SECTION (LEFT) -->
+    <div class="col-lg-6 mb-4">
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Edit Your Profile</h5>
+        </div>
+        <div class="card-body">
+
+          <!-- SKILLS SECTION -->
+          <div class="mb-5">
+            <h6 class="mb-3">
+              <i class="bi bi-lightning-fill"></i> Skills
+            </h6>
+            <form method="POST" action="{{ url_for('update_student_profile') }}">
+              <div class="mb-3">
+                <label class="form-label">Your Skills (comma-separated)</label>
+                <textarea class="form-control" name="skills" rows="3" placeholder="e.g., Python, React, Data Analysis, Project Management">{{ current_user.skills or '' }}</textarea>
+                <small class="form-text text-muted">Tip: Add technical and soft skills to attract relevant tasks</small>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">
+                <i class="bi bi-check-circle"></i> Save Skills
+              </button>
+            </form>
+          </div>
+
+          <hr>
+
+          <!-- ABOUT SECTION -->
+          <div class="mb-5">
+            <h6 class="mb-3">
+              <i class="bi bi-person-fill"></i> About You
+            </h6>
+            <form method="POST" action="{{ url_for('update_student_profile') }}">
+              <div class="mb-3">
+                <label class="form-label">Headline</label>
+                <input type="text" class="form-control" name="headline" placeholder="e.g., Full-Stack Developer | Problem Solver" maxlength="100" value="{{ current_user.headline or '' }}">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Bio</label>
+                <textarea class="form-control" name="bio" rows="4" placeholder="Tell us about yourself, your interests, and what you're looking for...">{{ current_user.bio or '' }}</textarea>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">University</label>
+                <input type="text" class="form-control" name="university" placeholder="e.g., University College Dublin" value="{{ current_user.university or '' }}">
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-sm">
+                <i class="bi bi-check-circle"></i> Save About Info
+              </button>
+            </form>
+          </div>
+
+          <hr>
+
+          <!-- PROJECTS SECTION -->
+          <div class="mb-5">
+            <h6 class="mb-3">
+              <i class="bi bi-folder-fill"></i> Add Project
+            </h6>
+            <form method="POST" action="{{ url_for('add_portfolio_project') }}" enctype="multipart/form-data">
+              <div class="mb-3">
+                <label class="form-label">Project Title</label>
+                <input type="text" class="form-control" name="project_title" placeholder="e.g., E-commerce Platform" required>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Project Description</label>
+                <textarea class="form-control" name="project_description" rows="3" placeholder="Describe what you built and your role" required></textarea>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Project Link (optional)</label>
+                <input type="url" class="form-control" name="project_link" placeholder="https://github.com/yourname/project">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Upload Project Image/File</label>
+                <input type="file" class="form-control" name="project_file" accept="image/*,.pdf,.doc,.docx">
+              </div>
+
+              <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-plus-circle"></i> Add Project
+              </button>
+            </form>
+          </div>
+
+          <hr>
+
+          <!-- EXPERIENCE SECTION -->
+          <div class="mb-5">
+            <h6 class="mb-3">
+              <i class="bi bi-briefcase-fill"></i> Work Experience
+            </h6>
+            <form method="POST" action="{{ url_for('add_experience') }}">
+              <div class="mb-3">
+                <label class="form-label">Job Title</label>
+                <input type="text" class="form-control" name="job_title" placeholder="e.g., Junior Developer">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Company</label>
+                <input type="text" class="form-control" name="company" placeholder="Company name">
+              </div>
+
+              <div class="row mb-3">
+                <div class="col-md-6">
+                  <label class="form-label">Start Date</label>
+                  <input type="month" class="form-control" name="start_date">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">End Date (leave blank if current)</label>
+                  <input type="month" class="form-control" name="end_date">
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea class="form-control" name="description" rows="3" placeholder="What did you do? What did you learn?"></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-plus-circle"></i> Add Experience
+              </button>
+            </form>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- PORTFOLIO PREVIEW (RIGHT) -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm sticky-top" style="top: 20px;">
+        <div class="card-header bg-success text-white">
+          <h5 class="mb-0"><i class="bi bi-eye"></i> Portfolio Preview</h5>
+        </div>
+        <div class="card-body">
+
+          <!-- PREVIEW: Profile Info -->
+          <div class="mb-4">
+            <h5>{{ current_user.name }}</h5>
+            {% if current_user.headline %}
+              <p class="text-muted">{{ current_user.headline }}</p>
+            {% else %}
+              <p class="text-muted text-secondary">Add a headline to stand out</p>
+            {% endif %}
+
+            {% if current_user.university %}
+              <p class="small"><i class="bi bi-mortarboard"></i> {{ current_user.university }}</p>
+            {% endif %}
+          </div>
+
+          <hr>
+
+          <!-- PREVIEW: Bio -->
+          {% if current_user.bio %}
+            <div class="mb-4">
+              <h6>About</h6>
+              <p>{{ current_user.bio }}</p>
+            </div>
+            <hr>
+          {% endif %}
+
+          <!-- PREVIEW: Skills -->
+          {% if current_user.skills %}
+            <div class="mb-4">
+              <h6>Skills</h6>
+              <div class="d-flex flex-wrap gap-2">
+                {% for skill in current_user.skills.split(',') %}
+                  <span class="badge bg-info">{{ skill.strip() }}</span>
+                {% endfor %}
+              </div>
+            </div>
+            <hr>
+          {% endif %}
+
+          <!-- PREVIEW: Projects -->
+          {% if current_user.project_media %}
+            <div class="mb-4">
+              <h6>Projects ({{ current_user.project_media|length }})</h6>
+              <div class="list-group">
+                {% for project in current_user.project_media %}
+                  <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <div>
+                        <h6 class="mb-1">{{ project.title or 'Project' }}</h6>
+                        <small class="text-muted">{{ project.uploaded_at.strftime('%b %d, %Y') }}</small>
+                      </div>
+                      <form method="POST" action="{{ url_for('delete_portfolio_item', item_id=project.id) }}" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this project?')">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+            <hr>
+          {% else %}
+            <div class="alert alert-light">
+              <small>Add projects to showcase your work</small>
+            </div>
+            <hr>
+          {% endif %}
+
+          <!-- PREVIEW: Metrics -->
+          <div class="row text-center">
+            <div class="col-6">
+              <small class="text-muted">Trust Score</small>
+              <div class="h5">{{ "%.1f"|format(current_user.trust_score) }}%</div>
+            </div>
+            <div class="col-6">
+              <small class="text-muted">Completed</small>
+              <div class="h5">{{ applications|selectattr('status', 'equalto', 'completed')|list|length }}</div>
+            </div>
+          </div>
+
+          <!-- CALL TO ACTION -->
+          <div class="mt-4">
+            <a href="{{ url_for('portfolio', student_id=current_user.id) }}" class="btn btn-primary btn-block w-100" target="_blank">
+              <i class="bi bi-arrow-up-right"></i> View Your Public Portfolio
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- STYLES -->
+<style>
+  .sticky-top {
+    position: sticky;
+    top: 20px;
+  }
+
+  @media (max-width: 991px) {
+    .sticky-top {
+      position: relative;
+      top: 0;
+    }
+  }
+
+  .list-group-item {
+    border-left: 4px solid #0066cc;
+    transition: all 0.3s ease;
+  }
+
+  .list-group-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(5px);
+  }
+
+  .badge {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+</style>
+
+{% endblock %}

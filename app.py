@@ -498,7 +498,12 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)
     verified = db.Column(db.Boolean, default=False)
-
+    headline = db.Column(db.String(150))  # e.g., "Full-Stack Developer"
+    bio = db.Column(db.Text)  # About section
+    skills = db.Column(db.Text)  # Comma-separated skills
+    university = db.Column(db.String(200))
+    experience = db.Column(db.JSON)  # JSON array of work experience
+    verified = db.Column(db.Boolean, default=False)
     # University linkage
     university_id = db.Column(db.Integer, db.ForeignKey("university.id"), nullable=True)
 
@@ -509,7 +514,6 @@ class User(UserMixin, db.Model):
 
     # University staff field
     department = db.Column(db.String(120))
-
     # Trust score (0-100)
     trust_score = db.Column(db.Float, default=0.0)
 
@@ -671,19 +675,20 @@ class Application(db.Model):
 # ============================================================================
 
 class LecturerReference(db.Model):
-    """
-    Lecturer reference model for student credibility.
-
-    Attributes:
-    - id: Primary key
-    - student_id: Foreign key to student
-    - lecturer_name: Name of lecturer providing reference
-    """
+    """Lecturer reference model for student credibility"""
+    __tablename__ = 'lecturer_reference'
 
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     lecturer_name = db.Column(db.String(150), nullable=False)
-    student = db.relationship("User", backref="lecturer_references")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationship with explicit backref
+    student = db.relationship(
+        "User",
+        foreign_keys=[student_id],
+        backref=db.backref("lecturer_references", lazy="dynamic", cascade="all, delete-orphan")
+    )
 
 # ============================================================================
 # 6.6 PROJECT MEDIA MODEL - Student portfolio files
@@ -1273,9 +1278,168 @@ def student_notifications():
 
     return render_template("student_notifications.html", notifications=notifications)
 
+
+@app.route('/student/profile/update', methods=['POST'])
+@login_required
+def update_student_profile():
+    """
+    Update student profile information
+
+    INPUT: Form data with skills, headline, bio, university
+    OUTPUT: Redirect to student dashboard
+    """
+    if current_user.role != 'student':
+        abort(403)
+
+    try:
+        # Update skills
+        if request.form.get('skills'):
+            current_user.skills = request.form.get('skills')
+
+        # Update bio/about
+        if request.form.get('bio'):
+            current_user.bio = request.form.get('bio')
+
+        if request.form.get('headline'):
+            current_user.headline = request.form.get('headline')
+
+        if request.form.get('university'):
+            current_user.university = request.form.get('university')
+
+        db.session.commit()
+        flash('Profile updated successfully!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error updating profile: {str(e)}', 'danger')
+
+    return redirect(url_for('student_dashboard'))
+
+
+@app.route('/student/portfolio/project/add', methods=['POST'])
+@login_required
+def add_portfolio_project():
+    """
+    Add a new project to student portfolio
+
+    INPUT: Form data with project title, description, link, and file upload
+    OUTPUT: Redirect to dashboard with success message
+    """
+    if current_user.role != 'student':
+        abort(403)
+
+    try:
+        # Handle file upload
+        filename = None
+        if 'project_file' in request.files:
+            file = request.files['project_file']
+            if file and file.filename:
+                filename = secure_filename(f"{current_user.id}_{int(time.time())}_{file.filename}")
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+
+        # Create portfolio media entry
+        project = ProjectMedia(
+            user_id=current_user.id,
+            title=request.form.get('project_title'),
+            filename=filename,
+            description=request.form.get('project_description'),
+            link=request.form.get('project_link')
+        )
+
+        db.session.add(project)
+        db.session.commit()
+
+        flash('Project added to portfolio!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error adding project: {str(e)}', 'danger')
+
+    return redirect(url_for('student_dashboard'))
+
 # ============================================================================
 # 9.6 Mark Notification Read
 # ============================================================================
+
+
+@app.route('/student/portfolio/item/<int:item_id>/delete', methods=['POST'])
+@login_required
+def delete_portfolio_item(item_id):
+    """
+    Delete a portfolio item (project)
+
+    INPUT: Portfolio item ID
+    OUTPUT: Redirect to dashboard
+    """
+    if current_user.role != 'student':
+        abort(403)
+
+    try:
+        item = ProjectMedia.query.get_or_404(item_id)
+
+        # Verify ownership
+        if item.user_id != current_user.id:
+            abort(403)
+
+        # Delete file if exists
+        if item.filename:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], item.filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+        db.session.delete(item)
+        db.session.commit()
+
+        flash('Project removed from portfolio', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting project: {str(e)}', 'danger')
+
+    return redirect(url_for('student_dashboard'))
+
+
+@app.route('/student/experience/add', methods=['POST'])
+@login_required
+def add_experience():
+    """
+    Add work experience to student profile
+
+    INPUT: Form data with job title, company, dates, description
+    OUTPUT: Redirect to dashboard
+    """
+    if current_user.role != 'student':
+        abort(403)
+
+    try:
+        # Create experience entry (you may need to add an Experience model)
+        experience = {
+            'job_title': request.form.get('job_title'),
+            'company': request.form.get('company'),
+            'start_date': request.form.get('start_date'),
+            'end_date': request.form.get('end_date'),
+            'description': request.form.get('description')
+        }
+
+        # Add to existing experience list (store as JSON)
+        if not hasattr(current_user, 'experience'):
+            current_user.experience = []
+        else:
+            current_user.experience = json.loads(current_user.experience or '[]')
+
+        current_user.experience.append(experience)
+        current_user.experience = json.dumps(current_user.experience)
+
+        db.session.commit()
+        flash('Experience added to profile!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error adding experience: {str(e)}', 'danger')
+
+    return redirect(url_for('student_dashboard'))
+
 
 @app.route("/student/notifications/<int:notif_id>/read", methods=["POST"])
 @login_required
@@ -1377,51 +1541,34 @@ def student_upload_project_media():
 # PUBLIC STUDENT PORTFOLIO
 # ============================================================================
 
-@app.route("/portfolio/<string:slug>")
-def public_portfolio(slug):
-    # Get student by slug
-    student = User.query.filter_by(
-        profile_url=slug,
-        role="student"
-    ).first_or_404()
 
-    # Get completed applications
-    completed_apps = Application.query.filter_by(
-        student_id=student.id,
-        status="completed"
-    ).all()
 
-    # Extract tasks from completed applications
-    completed_tasks = []
-    for app in completed_apps:
-        task = Task.query.get(app.task_id)
-        if task:
-            completed_tasks.append(task)
+@app.route('/student/portfolio/edit')
+@login_required
+def edit_portfolio():
+    """
+    Student portfolio editor page
 
-    completed_tasks_count = len(completed_tasks)
+    INPUT: None (current_user from session)
+    OUTPUT: Rendered edit_portfolio.html template with student data
 
-    # Get reviews (only if you have Review model)
-    try:
-        reviews = Review.query.filter_by(
-            reviewee_id=student.id
-        ).all()
-    except:
-        reviews = []
+    Allows students to:
+    - Add/edit skills
+    - Add/edit bio and headline
+    - Upload project files
+    - Add work experience
+    - View and delete portfolio items
+    """
+    if current_user.role != 'student':
+        abort(403)
 
-    # Calculate average rating safely
-    average_rating = 0
-    if reviews:
-        average_rating = sum(r.rating for r in reviews) / len(reviews)
-    elif student.trust_score:
-        average_rating = student.trust_score / 20
+    # Get student's applications for display
+    applications = Application.query.filter_by(student_id=current_user.id).all()
 
     return render_template(
-        "portfolio.html",
-        student=student,
-        completed_tasks_count=completed_tasks_count,
-        completed_tasks=completed_tasks,
-        reviews=reviews,
-        average_rating=average_rating
+        'edit_portfolio.html',
+        current_user=current_user,
+        applications=applications
     )
 
 @app.route("/dispute/new")
