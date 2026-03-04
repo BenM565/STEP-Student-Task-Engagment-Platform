@@ -259,8 +259,7 @@ HTML Structure:
     <!-- ============================= -->
     <!-- Display lecturer references for credibility -->
 
-    {% set refs = student.lecturer_references or [] %}
-    {% if refs|length > 0 %}
+    {% set refs = student.lecturer_references.all() if student.lecturer_references else [] %}    {% if refs|length > 0 %}
     <div class="row mb-4">
         <div class="col-12">
             <div class="card shadow-sm">
