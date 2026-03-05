@@ -96,7 +96,7 @@
                 </div>
                 <p class="text-muted small mb-3">{{ task.requirements or task.description or "" }}</p>
                 <div class="d-flex gap-2">
-                  <a href="{{ url_for('company_view_applicants', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">View Applicants</a>
+                  <a href="{{ url_for('company_applicants', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">View Applicants</a>
                   <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit</a>
                 </div>
               </div>
@@ -128,7 +128,7 @@
                 <p class="text-muted small mb-3">{{ task.requirements or task.description or "" }}</p>
                 {% set has_submission = (task.applications | selectattr('student_file') | list | length) > 0 %}
                 <div class="d-flex gap-2">
-                  <a href="{{ url_for('company_view_applicants', task_id=task.id) }}" class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
+                  <a href="{{ url_for('company_applicants', task_id=task.id) }}" class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
                     {{ 'View Submission' if has_submission else 'View Applicants' }}
                   </a>
                   <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit</a>
@@ -162,7 +162,7 @@
                 <p class="text-muted small mb-3">{{ task.requirements or task.description or "" }}</p>
                 {% set has_submission = (task.applications | selectattr('student_file') | list | length) > 0 %}
                 <div class="d-flex gap-2">
-                  <a href="{{ url_for('company_view_applicants', task_id=task.id) }}" class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
+                  <a href="{{ url_for('company_applicants', task_id=task.id) }}" class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
                     {{ 'View Submission' if has_submission else 'View Applicants' }}
                   </a>
                   <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit</a>

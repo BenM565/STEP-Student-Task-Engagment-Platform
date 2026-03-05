@@ -2487,15 +2487,50 @@ def edit_task(task_id):
 
 @app.route("/company/applicants/<int:task_id>")
 @login_required
-def company_view_applicants(task_id):
-    """View applicants for a specific task"""
-    if current_user.role != "company":
-        abort(403)
-    task = db.session.get(Task, task_id)
-    if not task or task.company_id != current_user.id:
-        abort(404)
-    applications = Application.query.filter_by(task_id=task_id).all()
-    return render_template("company_applicants.html", task=task, applications=applications)
+def company_applicants(task_id):
+    """View all applicants for a specific task"""
+    try:
+        task = db.session.get(Task, task_id)
+        if not task:
+            abort(404)
+
+        if task.company_id != current_user.id:
+            abort(403)
+
+        applications = Application.query.filter_by(task_id=task_id).all()
+
+        # Convert relationships to lists
+        app_details = []
+        for app in applications:
+            student = db.session.get(User, app.student_id)
+            if student:
+                # Convert lecturer_references to list using .all()
+                lecturer_refs = student.lecturer_references.all() if student.lecturer_references else []
+
+                reviews = Review.query.filter_by(ratee_user_id=student.id).all()
+                avg_rating = sum(r.rating for r in reviews) / len(reviews) if reviews else 0
+
+                app_details.append({
+                    'application': app,
+                    'student': student,
+                    'lecturer_references': lecturer_refs,  # Now a list!
+                    'avg_rating': avg_rating,
+                    'review_count': len(reviews)
+                })
+
+        return render_template(
+            'company_applicants.html',
+            task=task,
+            applications=[app.get('application') for app in app_details],
+            app_details=app_details  # Still pass details for ratings etc
+        )
+
+    except Exception as e:
+        print(f"ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash("Error loading applicants", "danger")
+        return redirect(url_for('company_dashboard'))
 
 
 # ============================================================================
@@ -2695,25 +2730,70 @@ def company_dispute_detail(dispute_id):
 
     return render_template('company_dispute_detail.html', dispute=dispute)
 
-@app.route('/disputes')
+
+@app.route('/disputes', methods=['GET', 'POST'])
 @login_required
 def disputes_view():
-    """Route dispatcher for disputes based on user role"""
-    user = current_user
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
 
-    if user.role == 'student':
-        return redirect(url_for('student_disputes'))
-    elif user.role == 'company':
-        return redirect(url_for('company_disputes'))
-    elif user.role == 'admin':
-        return redirect(url_for('admin_disputes'))
-    elif user.role == 'university':
-        try:
-            return redirect(url_for('university_disputes'))
-        except:
-            return redirect(url_for('university_dashboard'))
-    else:
+        dispute = Dispute(
+            raised_by_user_id=current_user.id,  # USE THIS!
+            message=f"{title}\n\n{description}",  # Combine into message
+            status='open'
+        )
+        db.session.add(dispute)
+        db.session.commit()
+
+        flash("Dispute submitted!", "success")
+        return redirect(url_for('disputes_view'))
+
+    # Query by raised_by_user_id
+    disputes = Dispute.query.filter_by(
+        raised_by_user_id=current_user.id
+    ).all()
+
+    return render_template('disputes.html', disputes=disputes)
+
+
+@app.route('/student-disputes', methods=['GET', 'POST'])
+@login_required
+def student_disputes():
+    if current_user.role != "student":
         abort(403)
+
+    if request.method == 'POST':
+        dispute = Dispute(
+            student_id=current_user.id,
+            title=request.form.get('title'),
+            description=request.form.get('description'),
+            dispute_type=request.form.get('dispute_type'),
+            status='open'
+        )
+        db.session.add(dispute)
+        db.session.commit()
+        flash("Dispute submitted!", "success")
+        return redirect(url_for('student_disputes'))
+
+    disputes = Dispute.query.filter_by(student_id=current_user.id).all()
+    return render_template('student_disputes.html', disputes=disputes)
+
+
+@app.route('/admin-disputes')
+@login_required
+def admin_disputes():
+    if current_user.role != "admin":
+        abort(403)
+    disputes = Dispute.query.all()
+    return render_template('admin_disputes.html', disputes=disputes)
+
+
+
+
+
+
+
 @app.route("/student/application/<int:application_id>/accept-selection", methods=["POST"])
 @login_required
 def accept_selected_task(application_id):

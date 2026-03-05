@@ -21,6 +21,8 @@ independently for the STEP Student Task Engagement Platform.
       {% if application %}
       <div class="applicant-card">
         <div class="card-body">
+            <!-- DEBUG: See actual status -->
+
           <!-- Student Overview -->
           <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
             <div>
@@ -45,8 +47,7 @@ independently for the STEP Student Task Engagement Platform.
           {% set refs = application.student.lecturer_references or [] %}
           <div class="mb-3">
             <h5 class="mb-2">Lecturer References</h5>
-            {% if refs|length > 0 %}
-              <ul class="list-group shadow-soft rounded-12">
+                {% if refs.all()|length > 0 %}              <ul class="list-group shadow-soft rounded-12">
                 {% for ref in refs %}
                   <li class="list-group-item d-flex justify-content-between align-items-center">
                     {{ ref.lecturer_name }}
@@ -181,7 +182,7 @@ independently for the STEP Student Task Engagement Platform.
               View Student Profile
             </a>
             <!-- This should already be correct from our earlier fix -->
-            {% if application.status == "pending" %}
+            {% if not application.status or application.status in ["pending"] %}
               <form method="POST" action="{{ url_for('accept_application', app_id=application.id) }}">
                 <button class="btn btn-success btn-sm">Select Student</button>
               </form>

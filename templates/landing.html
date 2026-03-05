@@ -291,6 +291,8 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       gap: 30px;
+      align-items: start;
+      position: relative;
     }
 
     .step-card {
@@ -298,6 +300,55 @@
       padding: 30px;
       border-radius: 15px;
       text-align: center;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .step-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Arrow between cards on desktop */
+    .step-card::after {
+      content: '→';
+      position: absolute;
+      right: -45px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 2rem;
+      color: #00cc6f;
+      font-weight: bold;
+      display: none;
+      z-index: 5;
+    }
+
+    /* Show arrows on desktop between first 3 cards */
+    @media (min-width: 769px) {
+      .step-card:nth-child(-n+3)::after {
+        display: block;
+      }
+      .step-card:nth-child(4)::after {
+        display: none;
+      }
+    }
+
+    /* Mobile: show down arrows instead */
+    @media (max-width: 768px) {
+      .step-card::after {
+        content: '↓';
+        position: static;
+        display: block;
+        margin: 15px 0;
+        font-size: 1.5rem;
+        right: auto;
+        transform: none;
+      }
+      .step-card:nth-child(4)::after {
+        display: none;
+      }
+    }
       box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
       transition: all 0.3s ease;
       position: relative;
@@ -399,7 +450,10 @@
     .cta-section p {
       font-size: 1.2rem;
       margin-bottom: 40px;
-      opacity: 0.95;
+      opacity: 1;
+      color: rgba(255, 255, 255, 0.98);
+      font-weight: 500;
+      line-height: 1.6;
     }
 
     .cta-buttons {
@@ -602,22 +656,22 @@
 
     <div class="stats-container">
       <div class="stat-box">
-        <div class="stat-number">5,000+</div>
+        <div class="stat-number">2+</div>
         <div class="stat-label">Active Students</div>
       </div>
 
       <div class="stat-box">
-        <div class="stat-number">500+</div>
+        <div class="stat-number">1+</div>
         <div class="stat-label">Companies</div>
       </div>
 
       <div class="stat-box">
-        <div class="stat-number">10,000+</div>
-        <div class="stat-label">Projects Completed</div>
+        <div class="stat-number">1+</div>
+        <div class="stat-label">Project Completed</div>
       </div>
 
       <div class="stat-box">
-        <div class="stat-number">$2M+</div>
+        <div class="stat-number">$50+</div>
         <div class="stat-label">Payments Processed</div>
       </div>
     </div>
@@ -640,7 +694,7 @@
 
   <!-- Footer -->
   <footer class="landing-footer">
-    <p>&copy; 2025 STEP Platform. Connect students with opportunity. |
+    <p>&copy; 2025 STEP Platform. Connect students with opportunity. BM |
     <a href="#">Privacy Policy</a> |
     <a href="#">Terms of Service</a></p>
   </footer>

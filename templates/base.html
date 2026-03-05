@@ -51,7 +51,7 @@ independently for the STEP Student Task Engagement Platform.
         {% if current_user.is_authenticated %}
           {% if current_user.role == "student" %}
             <li><a class="navbar-link" href="{{ url_for('browse_tasks') }}"><i class="bi bi-search"></i> Browse Tasks</a></li>
-            <li><a class="navbar-link" href="{{ url_for('student_dashboard') }}"><i class="bi bi-exclamation-triangle"></i> Disputes</a></li>            <li>
+            <li><a class="navbar-link" href="{{ url_for('disputes_view') }}"><i class="bi bi-exclamation-triangle"></i> Disputes</a></li>            <li>
   <a class="navbar-link" href="{{ url_for('student_notifications') }}" style="position: relative;">
     <i class="bi bi-bell"></i> Notifications
     {% if unread_count and unread_count > 0 %}
