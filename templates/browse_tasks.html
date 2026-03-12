@@ -23,11 +23,15 @@
 <!-- Search/Filter Form -->
 <form method="get" class="card filter-card p-3 shadow-sm mb-3">
   <div class="row g-2 align-items-end">
-    <div class="col-md-5">
-      <label class="form-label">Search</label>
-      <input type="text" class="form-control" name="q" placeholder="Keywords (e.g. Python, UI, data)" value="{{ q or '' }}">
-    </div>
-    <div class="col-md-3">
+    <div class="input-group">
+  <input type="text" name="q" class="form-control" placeholder="Search tasks..." value="{{ q or '' }}">
+  <button class="btn btn-primary" type="submit">
+    <i class="bi bi-search"></i> Search
+  </button>
+  <button class="btn btn-info" type="button" data-bs-toggle="modal" data-bs-target="#aiSearchModal">
+    <i class="bi bi-sparkles"></i> AI Enhance
+  </button>
+</div>
       <label class="form-label">Max hours</label>
       <input type="number" class="form-control" name="hours_max" min="1" placeholder="e.g. 10" value="{{ hours_max or '' }}">
     </div>
@@ -90,4 +94,6 @@
     })();
   {% endif %}
 </script>
+
+
 {% endblock %}

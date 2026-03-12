@@ -20,7 +20,7 @@
                         <!-- Overall Rating -->
                         <div class="mb-3">
                             {% if rating_count > 0 %}
-                                {% set full = rating_avg|round(0, 'floor')|int %}
+                                {% set full = rating_avg|round(0, 'common')|int %}
                                 {% set empty = 5 - full %}
 
                                 <div class="d-flex align-items-center gap-2">

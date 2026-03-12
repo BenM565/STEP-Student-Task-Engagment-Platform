@@ -93,7 +93,7 @@ Features:
 
           <hr>
 
-          <!-- PROJECTS SECTION -->
+         <!-- PROJECTS SECTION -->
           <div class="mb-5">
             <h6 class="mb-3">
               <i class="bi bi-folder-fill"></i> Add Project
@@ -119,9 +119,15 @@ Features:
                 <input type="file" class="form-control" name="project_file" accept="image/*,.pdf,.doc,.docx">
               </div>
 
-              <button type="submit" class="btn btn-success btn-sm">
-                <i class="bi bi-plus-circle"></i> Add Project
-              </button>
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-success btn-sm">
+                  <i class="bi bi-plus-circle"></i> Add Project
+                </button>
+
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="bi bi-check-circle"></i> Save Project
+                </button>
+              </div>
             </form>
           </div>
 
@@ -159,15 +165,17 @@ Features:
                 <textarea class="form-control" name="description" rows="3" placeholder="What did you do? What did you learn?"></textarea>
               </div>
 
-              <button type="submit" class="btn btn-success btn-sm">
-                <i class="bi bi-plus-circle"></i> Add Experience
-              </button>
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-success btn-sm">
+                  <i class="bi bi-plus-circle"></i> Add Experience
+                </button>
+
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="bi bi-check-circle"></i> Save Experience
+                </button>
+              </div>
             </form>
           </div>
-
-        </div>
-      </div>
-    </div>
 
     <!-- PORTFOLIO PREVIEW (RIGHT) -->
     <div class="col-lg-6">
@@ -257,11 +265,6 @@ Features:
             </div>
           </div>
 
-          <!-- CALL TO ACTION -->
-
-            </a>
-          </div>
-
         </div>
       </div>
     </div>
@@ -278,7 +281,7 @@ Features:
   }
 
   @media (max-width: 991px) {
-    .sticky-top {-
+    .sticky-top {
       position: relative;
       top: 0;
     }

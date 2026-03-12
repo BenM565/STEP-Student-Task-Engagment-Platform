@@ -25,6 +25,7 @@ References:
 - Flask-Login: https://flask-login.readthedocs.io/
 - SQLAlchemy: https://flask-sqlalchemy.palletsprojects.com/
 - Werkzeug: https://werkzeug.palletsprojects.com/
+- ChatGPT + Claude AI was used to assist in frameworks for all files
 """
 from werkzeug.utils import secure_filename
 
@@ -41,6 +42,7 @@ from email_service import (
     send_task_posted_notification,
     send_application_rejected_notification
 )
+
 from email_service import send_email
 import os
 import json
@@ -62,40 +64,111 @@ from flask import (
 
 # Flask extensions
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
+try:
+    from flask_migrate import Migrate
+except Exception:
+    # Fallback: allow app to run even if flask_migrate isn't installed
+    class Migrate:
+        def __init__(self, app=None, db=None):
+            pass
 from flask_mail import Mail
 from sqlalchemy.dialects import mysql
-from sqlalchemy import func
-from sqlalchemy.dialects import mysql
+from sqlalchemy import func, text
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-import re
+import os
+
 
 import re
+ADMIN_REGISTRATION_CODE = os.getenv("ADMIN_REGISTRATION_CODE", "").strip()
 
-# ONLY these domains are allowed - whitelist approach
 VALID_EMAIL_DOMAINS = {
     # Free email providers
-    'gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'ymail.com',
-    'aol.com', 'mail.com', 'protonmail.com', 'tutanota.com',
-    'yahoo.ie', 'yahoo.co.uk', 'outlook.ie', 'gmail.co.uk',
-
-    # Ireland ISPs
-    'eircom.net', 'indigo.ie', 'tinet.ie', 'esat.net', 'ireland.com',
-    'btinternet.com', 'vodafone.ie', 'tiscali.ie',
-
-    # Irish Universities
-    'ucd.ie', 'tcd.ie', 'nuig.ie', 'ul.ie', 'dit.ie', 'dcu.ie',
-    'atu.ie', 'itsligo.ie', 'itcarlow.ie', 'ittralee.ie', 'itcork.ie',
-    'itlimerick.ie', 'tudublin.ie', 'itgalway.ie',
-
-    # UK Universities
-    'ox.ac.uk', 'cam.ac.uk', 'ac.uk',
-
-    # Add your work/company domains here
-    # 'yourcompany.ie',
-    # 'yourcompany.com',
+    "gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "ymail.com",
+    "aol.com", "protonmail.com", "tutanota.com",
+    # Add whatever you want allowed
+    "ucc.ie", "yahoo.ie", "yahoo.co.uk", "outlook.ie", "gmail.co.uk",
+    # Universities (examples)
+    "ucd.ie", "tcd.ie", "nuig.ie", "ul.ie", "dcu.ie", "tudublin.ie",
+    # ...
 }
+
+def is_valid_email_domain(email):
+    """
+    Validate that email uses REAL domain (whitelist approach).
+    """
+    if "@" not in (email or ""):
+        return False
+
+    domain = email.split("@", 1)[1].lower().strip()
+
+    fake_domains = {
+        "test.com", "example.com", "example.org", "example.net",
+        "localhost", "127.0.0.1", "fake.com",
+        # ... keep your existing fake list ...
+    }
+    if domain in fake_domains:
+        return False
+
+    # Fallback safety: if VALID_EMAIL_DOMAINS ever becomes missing/empty, don't crash
+    allowed = globals().get("VALID_EMAIL_DOMAINS") or set()
+
+    if domain in allowed:
+        return True
+
+    if domain.endswith(".ac.uk") or domain.endswith(".edu") or domain.endswith(".edu.au"):
+        return True
+
+    return False
+
+def admin_required(view_func):
+    @wraps(view_func)
+    @login_required
+    def wrapper(*args, **kwargs):
+        if (getattr(current_user, "role", None) or "").lower() != "admin":
+            flash("Admin access required.", "danger")
+            return redirect(url_for("index"))
+        return view_func(*args, **kwargs)
+    return wrapper
+
+def get_admin_registration_code() -> str:
+    # Read at request-time (works reliably with Flask reloader)
+    return (os.getenv("ADMIN_REGISTRATION_CODE") or "").strip()
+
+def notify_admins_of_dispute(dispute) -> None:
+    """
+    Create an in-app Notification for each admin and publish an SSE event (if connected).
+    """
+    try:
+        admins = User.query.filter_by(role="admin").all()
+        if not admins:
+            return
+
+        preview = (getattr(dispute, "message", "") or "").strip().replace("\n", " ")
+        if len(preview) > 140:
+            preview = preview[:140] + "..."
+
+        for admin in admins:
+            notif = Notification(
+                user_id=admin.id,
+                task_id=getattr(dispute, "task_id", None),
+                message=f"New dispute #{dispute.id}: {preview}",
+            )
+            db.session.add(notif)
+
+            try:
+                broker.publish(admin.id, {
+                    "type": "admin_dispute_created",
+                    "title": "New dispute submitted",
+                    "message": f"Dispute #{dispute.id} needs review.",
+                    "dispute_id": dispute.id,
+                })
+            except Exception:
+                pass
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def is_valid_email_domain(email):
@@ -318,15 +391,11 @@ os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 # ============================================================================
 
 # Email configuration (Flask-Mail)
-app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv(
-    'MAIL_DEFAULT_SENDER',
-    'noreply@step-platform.com'
-)
+app.config['MAIL_USERNAME'] = '122438066@umail.ucc.ie'
+app.config['MAIL_PASSWORD'] = 'tbce ccvz hgmx ferp'  # Your 16-char Google App Password
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
 
 # Application URL (for email links)
 app.config['APP_URL'] = os.getenv('APP_URL', 'http://localhost:5000')
@@ -405,6 +474,46 @@ def initialize_db():
     except Exception:
         db.create_all()
         db.session.commit()
+
+    # Ensure newer columns exist even when running without migrations (SQLite/MySQL only)
+    try:
+        driver = (db.engine.url.drivername or "").lower()
+
+        if driver.startswith("sqlite"):
+            cols = db.session.execute(text("PRAGMA table_info(project_media)")).fetchall()
+            existing = {row[1] for row in cols}  # row[1] = column name
+
+            if "description" not in existing:
+                db.session.execute(text("ALTER TABLE project_media ADD COLUMN description TEXT"))
+            if "link" not in existing:
+                db.session.execute(text("ALTER TABLE project_media ADD COLUMN link VARCHAR(500)"))
+
+            db.session.commit()
+
+        elif driver.startswith("mysql"):
+            # Check columns via information_schema, then ALTER TABLE if missing
+            db_name = db.engine.url.database
+            if db_name:
+                existing_rows = db.session.execute(
+                    text("""
+                        SELECT COLUMN_NAME
+                        FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = :db
+                          AND TABLE_NAME = 'project_media'
+                    """),
+                    {"db": db_name},
+                ).fetchall()
+                existing = {row[0] for row in existing_rows}
+
+                if "description" not in existing:
+                    db.session.execute(text("ALTER TABLE project_media ADD COLUMN description TEXT NULL"))
+                if "link" not in existing:
+                    db.session.execute(text("ALTER TABLE project_media ADD COLUMN link VARCHAR(500) NULL"))
+
+                db.session.commit()
+
+    except Exception:
+        db.session.rollback()
 # ============================================================================
 # SECTION 5: REAL-TIME EVENTS (SSE) - Server-Sent Events Broker
 # ============================================================================
@@ -717,6 +826,8 @@ class ProjectMedia(db.Model):
     - user_id: Foreign key to student
     - filename: Stored filename
     - title: Display title
+    - description: Optional description of the project
+    - link: Optional external URL
     - uploaded_at: Upload timestamp
     """
 
@@ -724,6 +835,8 @@ class ProjectMedia(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     filename = db.Column(db.String(255), nullable=False)
     title = db.Column(db.String(200))
+    description = db.Column(db.Text, nullable=True)
+    link = db.Column(db.String(500), nullable=True)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     user = db.relationship("User", backref="project_media")
 
@@ -923,13 +1036,52 @@ def index():
 # 8.2 Registration Route
 # ============================================================================
 
+def get_email_domain(email: str) -> str:
+    if not email or "@" not in email:
+        return ""
+    return email.split("@", 1)[1].strip().lower()
+
+
+def get_university_by_email_domain(email: str):
+    """
+    Find a University row whose domain matches the email domain.
+    Example: email=someone@ucc.ie -> match University.domain == "ucc.ie"
+    """
+    domain = get_email_domain(email)
+    if not domain:
+        return None
+    return University.query.filter(func.lower(University.domain) == domain).first()
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         name = (request.form.get("name") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
-        role = request.form.get("role") or "student"
+        role = (request.form.get("role") or "student").strip().lower()
+        admin_code = (request.form.get("admin_code") or "").strip()
+
+        # TEMP DEBUG (remove after it works)
+        app.logger.warning(
+            "REGISTER POST role=%r admin_code=%r env_admin_code=%r",
+            role,
+            admin_code,
+            get_admin_registration_code(),
+        )
+
+        # Gate admin registration
+        if role == "admin":
+            env_code = get_admin_registration_code()
+            if not admin_code:
+                flash("Admin registration code is required.", "danger")
+                return render_template("register.html")
+            if not env_code:
+                flash("Admin registration is not configured on the server.", "danger")
+                return render_template("register.html")
+            if admin_code != env_code:
+                flash("Invalid admin registration code.", "danger")
+                return render_template("register.html")
 
         # Basic validation
         if not name or not email or not password:
@@ -937,21 +1089,21 @@ def register():
             return render_template("register.html")
 
         # Validate email format
-        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(email_regex, email):
             flash("Please enter a valid email address format.", "danger")
             return render_template("register.html")
 
-        # NEW: Validate email domain is REAL (not test/fake)
+        # Validate email domain (your existing policy)
         if not is_valid_email_domain(email):
             flash(
                 "Please use a real email address (Gmail, Outlook, Yahoo, etc). "
                 "Test emails and fake domains are not allowed.",
-                "danger"
+                "danger",
             )
             return render_template("register.html")
 
-        # Check if user already exists
+        # Check if user exists
         if User.query.filter_by(email=email).first():
             flash("This email is already registered.", "danger")
             return render_template("register.html")
@@ -960,23 +1112,23 @@ def register():
             user = User(name=name, email=email, role=role)
             user.set_password(password)
 
-            # Add role-specific fields
-            if role == 'company':
-                user.company_size = request.form.get('company_size')
-                user.website = request.form.get('website')
-                user.location = request.form.get('location')
-                user.bio = request.form.get('bio')
-
-            elif role == 'student':
-                user.skills = request.form.get('skills')
-                user.grades = request.form.get('grades')
+            if role == "company":
+                user.company_size = request.form.get("company_size")
+                user.website = request.form.get("website")
+                user.location = request.form.get("location")
+                user.bio = request.form.get("bio")
+            elif role == "student":
+                user.skills = request.form.get("skills")
+                user.grades = request.form.get("grades")
+                user.projects = request.form.get("projects")
+            elif role == "university":
+                user.department = request.form.get("department")
 
             db.session.add(user)
             db.session.commit()
 
             flash("Registration successful! Please log in.", "success")
             return redirect(url_for("login"))
-
         except Exception as e:
             db.session.rollback()
             flash(f"Error: {str(e)}", "danger")
@@ -988,19 +1140,19 @@ def register():
 # 8.3 Login Route
 # ============================================================================
 
+# ... existing code ...
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """User login route"""
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password")
+        password = request.form.get("password") or ""
 
         if not email or not password:
             flash("Email and password are required.", "danger")
             return render_template("login.html")
 
         user = User.query.filter_by(email=email).first()
-
         if not user or not user.check_password(password):
             flash("Invalid email or password.", "danger")
             return render_template("login.html")
@@ -1008,49 +1160,19 @@ def login():
         login_user(user)
         flash(f"Welcome, {user.name}!", "success")
 
-        # Redirect based on role
+        # Redirect by role
         if user.role == "student":
             return redirect(url_for("student_dashboard"))
-        elif user.role == "company":
-            return redirect(url_for("company_dashboard"))
-        elif user.role == "admin":
-            return redirect(url_for("admin_home"))
-        else:
-            return redirect(url_for("index"))
-
-    return render_template("login.html")
-    """
-    User login route.
-    ...
-    """
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password")
-
-        if not email or not password:
-            flash("Email and password are required.", "danger")
-            return render_template("login.html")
-
-        user = User.query.filter_by(email=email).first()
-
-        if not user or not user.check_password(password):
-            flash("Invalid email or password.", "danger")
-            return render_template("login.html")
-
-        # Enforce organization email policy
         if user.role == "company":
-            if "@" in email:
-                domain = email.split("@")[1]
-                if domain in ["gmail.com", "yahoo.com", "outlook.com"]:
-                    msg = "Companies must use a business email address."
-                    flash(msg, "warning")
-                    return render_template("login.html")
-
-        login_user(user)
-        flash(f"Welcome, {user.name}!", "success")
+            return redirect(url_for("company_dashboard"))
+        if user.role == "admin":
+            return redirect(url_for("admin_home"))
+        if user.role == "university":
+            return redirect(url_for("university_dashboard"))
         return redirect(url_for("index"))
 
     return render_template("login.html")
+# ... existing code ...
 
 # ============================================================================
 # 8.4 Logout Route
@@ -1263,6 +1385,52 @@ def task_detail(task_id):
 # 9.4 Student Profile
 # ============================================================================
 
+@app.route("/admin/users", endpoint="admin_users")
+@admin_required
+def admin_users():
+    # show all student accounts so the admin can review them
+    students = User.query.filter_by(role="student").order_by(User.id.asc()).all()
+    return render_template("admin_users.html", students=students)
+
+@app.route("/admin/users/<int:user_id>/verify", methods=["POST"], endpoint="admin_verify_user")
+@admin_required
+def admin_verify_user(user_id: int):
+    # mark a student account as verified
+    student = User.query.get_or_404(user_id)
+    if student.role != "student":
+        flash("Only student accounts can be verified here.", "danger")
+        return redirect(url_for("admin_users"))
+
+    student.verified = True
+    db.session.commit()
+    flash("Student verified.", "success")
+    return redirect(request.referrer or url_for("admin_users"))
+@app.route("/admin/disputes/<int:dispute_id>", methods=["GET", "POST"], endpoint="admin_dispute_detail")
+@admin_required
+def admin_dispute_detail(dispute_id: int):
+    # show a single dispute to allow admin to review and update its status
+    d = Dispute.query.get_or_404(dispute_id)
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        note = (request.form.get("resolution_note") or "").strip()
+        # handle resolving the dispute
+        if action == "resolve":
+            d.status = "resolved"
+            d.resolved_at = datetime.utcnow()
+            d.resolved_by_admin_id = current_user.id
+            d.resolution_note = note
+            db.session.commit()
+            flash("Dispute resolved.", "success")
+            return redirect(url_for("admin_disputes"))
+        # handle marking the dispute as in review
+        elif action == "in_review":
+            d.status = "in_review"
+            db.session.commit()
+            flash("Dispute marked in review.", "info")
+            return redirect(url_for("admin_disputes"))
+    # render the detailed view of a single dispute
+    return render_template("admin_disputes_detail.html", d=d)
+
 @app.route('/profile')
 @login_required
 def profile():
@@ -1299,29 +1467,32 @@ def student_notifications():
 @app.route('/student/profile/update', methods=['POST'])
 @login_required
 def update_student_profile():
-    """
-    Update student profile information
-
-    INPUT: Form data with skills, headline, bio, university
-    OUTPUT: Redirect to student dashboard
-    """
     if current_user.role != 'student':
         abort(403)
 
     try:
+        user = db.session.get(User, current_user.id)
+        if not user:
+            abort(404)
+
         # Update skills
-        if request.form.get('skills'):
-            current_user.skills = request.form.get('skills')
+        if request.form.get('skills') is not None:
+            user.skills = request.form.get('skills')
 
         # Update bio/about
-        if request.form.get('bio'):
-            current_user.bio = request.form.get('bio')
+        if request.form.get('bio') is not None:
+            user.bio = request.form.get('bio')
 
-        if request.form.get('headline'):
-            current_user.headline = request.form.get('headline')
+        if request.form.get('headline') is not None:
+            user.headline = request.form.get('headline')
 
+        # Update university - expects an ID (keep existing behavior)
         if request.form.get('university'):
-            current_user.university = request.form.get('university')
+            try:
+                university_id = int(request.form.get('university'))
+                user.university_id = university_id
+            except (ValueError, TypeError):
+                pass
 
         db.session.commit()
         flash('Profile updated successfully!', 'success')
@@ -1329,8 +1500,160 @@ def update_student_profile():
     except Exception as e:
         db.session.rollback()
         flash(f'Error updating profile: {str(e)}', 'danger')
+        import traceback
+        traceback.print_exc()
 
-    return redirect(url_for('student_dashboard'))
+    return redirect(url_for('edit_portfolio'))
+
+
+
+@app.route("/university/dashboard")
+@login_required
+def university_dashboard():
+    """University dashboard - view student statistics and analytics"""
+    if current_user.role != "university":
+        abort(403)
+
+    # Determine which University this staff account belongs to via email domain
+    university = get_university_by_email_domain(current_user.email)
+    if not university:
+        flash(
+            "Your university account email domain is not linked to a University record. "
+            "Ask an admin to add your university domain (e.g., ucc.ie).",
+            "danger",
+        )
+        return redirect(url_for("index"))
+
+    # Get all students linked to this university
+    university_students = User.query.filter_by(
+        university_id=university.id,
+        role="student",
+    ).all()
+
+    total_students = len(university_students)
+    verified_students = len([s for s in university_students if s.verified])
+
+    # Get applications from students in this university
+    student_ids = [s.id for s in university_students]
+    all_applications = (
+        Application.query.filter(Application.student_id.in_(student_ids)).all()
+        if student_ids
+        else []
+    )
+
+    applications_count = len(all_applications)
+    selections_count = len([a for a in all_applications if a.selected])
+    approvals_count = len([a for a in all_applications if a.review_status == "approved"])
+
+    completed = len([a for a in all_applications if a.status == "completed"])
+    completion_rate = (completed / applications_count * 100) if applications_count > 0 else 0
+
+    # Average rating for students at this university (ratee_user_id = student)
+    reviews = (
+        Review.query.filter(Review.ratee_user_id.in_(student_ids)).all()
+        if student_ids
+        else []
+    )
+    avg_rating = (sum(r.rating for r in reviews) / len(reviews)) if reviews else 0
+
+    # Get top tags
+    all_tags = []
+    for app_obj in all_applications:
+        if app_obj.task and app_obj.task.tags:
+            all_tags.extend([t.strip() for t in app_obj.task.tags.split(",")])
+
+    from collections import Counter
+    tag_counts = Counter(all_tags)
+    top_tags = tag_counts.most_common(10)
+
+    return render_template(
+        "university_dashboard.html",
+        university=university,
+        total_students=total_students,
+        verified_students=verified_students,
+        applications_count=applications_count,
+        selections_count=selections_count,
+        approvals_count=approvals_count,
+        completion_rate=completion_rate,
+        avg_rating=avg_rating,
+        top_tags=top_tags,
+    )
+
+
+
+@app.route("/university/dashboard/export")
+@login_required
+def university_dashboard_export():
+    """
+    Export a CSV for the university dashboard.
+
+    This endpoint exists because university_dashboard.html calls:
+    url_for('university_dashboard_export', ...)
+    """
+    if current_user.role != "university":
+        abort(403)
+
+    # Accept optional filters (template passes these)
+    start = request.args.get("start", "").strip()
+    end = request.args.get("end", "").strip()
+    university_id = request.args.get("university_id")
+
+    # Basic authorization: only allow exporting for current university
+    try:
+        if university_id and int(university_id) != int(current_user.id):
+            abort(403)
+    except ValueError:
+        abort(400)
+
+    # Parse date filters if provided (kept lenient; export still works if blank/invalid)
+    def _parse_date(s: str):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except Exception:
+            return None
+
+    start_dt = _parse_date(start)
+    end_dt = _parse_date(end)
+    if end_dt is not None:
+        end_dt = end_dt + timedelta(days=1)  # make end inclusive
+
+    # Students in this university
+    students = User.query.filter_by(university_id=current_user.id, role="student").all()
+    student_ids = [s.id for s in students]
+
+    # Pull applications (optionally filtered by created_at if your model has it)
+    apps_q = Application.query.filter(Application.student_id.in_(student_ids)) if student_ids else Application.query.filter(False)
+
+    # Only apply time filtering if the column exists and dates provided
+    if start_dt is not None and hasattr(Application, "created_at"):
+        apps_q = apps_q.filter(Application.created_at >= start_dt)
+    if end_dt is not None and hasattr(Application, "created_at"):
+        apps_q = apps_q.filter(Application.created_at < end_dt)
+
+    apps = apps_q.all()
+
+    # Build CSV
+    # Note: keep it simple and robust (no external dependencies)
+    lines = ["student_id,student_name,student_email,applications_count,completed_count,approved_count"]
+    apps_by_student = {}
+    for a in apps:
+        apps_by_student.setdefault(a.student_id, []).append(a)
+
+    for s in students:
+        s_apps = apps_by_student.get(s.id, [])
+        completed_count = sum(1 for a in s_apps if a.status == "completed")
+        approved_count = sum(1 for a in s_apps if (a.review_status or "") == "approved")
+        safe_name = (s.name or "").replace('"', '""')
+        lines.append(f'{s.id},"{safe_name}",{s.email},{len(s_apps)},{completed_count},{approved_count}')
+
+    csv_text = "\n".join(lines) + "\n"
+    filename = f"university_dashboard_{current_user.id}.csv"
+
+    return Response(
+        csv_text,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.route('/student/portfolio/project/add', methods=['POST'])
@@ -1340,13 +1663,12 @@ def add_portfolio_project():
     Add a new project to student portfolio
 
     INPUT: Form data with project title, description, link, and file upload
-    OUTPUT: Redirect to dashboard with success message
+    OUTPUT: Redirect to portfolio editor with success message
     """
     if current_user.role != 'student':
         abort(403)
 
     try:
-        # Handle file upload
         filename = None
         if 'project_file' in request.files:
             file = request.files['project_file']
@@ -1355,25 +1677,28 @@ def add_portfolio_project():
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(filepath)
 
-        # Create portfolio media entry
+        if not filename:
+            flash("Please upload a file for the project.", "danger")
+            return redirect(url_for("edit_portfolio"))
+
         project = ProjectMedia(
             user_id=current_user.id,
-            title=request.form.get('project_title'),
+            title=(request.form.get('project_title') or "").strip() or None,
             filename=filename,
-            description=request.form.get('project_description'),
-            link=request.form.get('project_link')
+            description=(request.form.get('project_description') or "").strip() or None,
+            link=(request.form.get('project_link') or "").strip() or None,
         )
 
         db.session.add(project)
         db.session.commit()
-
         flash('Project added to portfolio!', 'success')
 
     except Exception as e:
         db.session.rollback()
         flash(f'Error adding project: {str(e)}', 'danger')
 
-    return redirect(url_for('student_dashboard'))
+    return redirect(url_for('edit_portfolio'))
+
 
 # ============================================================================
 # 9.6 Mark Notification Read
@@ -1421,17 +1746,17 @@ def delete_portfolio_item(item_id):
 @login_required
 def add_experience():
     """
-    Add work experience to student profile
-
-    INPUT: Form data with job title, company, dates, description
-    OUTPUT: Redirect to dashboard
+    Add work experience to student profile (stored in JSON column).
     """
     if current_user.role != 'student':
         abort(403)
 
     try:
-        # Create experience entry (you may need to add an Experience model)
-        experience = {
+        user = db.session.get(User, current_user.id)
+        if not user:
+            abort(404)
+
+        experience_item = {
             'job_title': request.form.get('job_title'),
             'company': request.form.get('company'),
             'start_date': request.form.get('start_date'),
@@ -1439,14 +1764,11 @@ def add_experience():
             'description': request.form.get('description')
         }
 
-        # Add to existing experience list (store as JSON)
-        if not hasattr(current_user, 'experience'):
-            current_user.experience = []
-        else:
-            current_user.experience = json.loads(current_user.experience or '[]')
-
-        current_user.experience.append(experience)
-        current_user.experience = json.dumps(current_user.experience)
+        current = user.experience or []
+        if not isinstance(current, list):
+            current = []
+        current.append(experience_item)
+        user.experience = current
 
         db.session.commit()
         flash('Experience added to profile!', 'success')
@@ -1455,7 +1777,7 @@ def add_experience():
         db.session.rollback()
         flash(f'Error adding experience: {str(e)}', 'danger')
 
-    return redirect(url_for('student_dashboard'))
+    return redirect(url_for('edit_portfolio'))
 
 
 @app.route("/student/notifications/<int:notif_id>/read", methods=["POST"])
@@ -1512,8 +1834,8 @@ def student_upload_project_media():
     # Save file
     from werkzeug.utils import secure_filename
     filename = f"app_{application.id}_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
-    os.makedirs("uploads", exist_ok=True)
-    filepath = os.path.join("uploads", filename)
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(filepath)
 
     # UPDATE APPLICATION - SET REVIEW_STATUS
@@ -1974,9 +2296,10 @@ def portfolio(student_id):
         Review.is_hidden == False
     ).all()
 
-    average_rating = (
-        sum(r.rating for r in reviews) / len(reviews) if reviews else 0.0
-    )
+    if reviews:
+        average_rating = sum(r.rating for r in reviews) / len(reviews)
+    else:
+        average_rating = 0
 
     # Render portfolio template
     return render_template(
@@ -2377,6 +2700,35 @@ def add_task():
 
     return render_template("add_task.html")
 
+
+@app.route('/api/ai-enhance-search', methods=['POST'])
+def ai_enhance_search():
+    """AI-powered search enhancement"""
+    data = request.json
+    description = data.get('description', '')
+    skills = data.get('skills', '')
+    hours = data.get('hours', '')
+
+    prompt = f"""Based on this description: "{description}"
+    {f'and these skills: {skills}' if skills else ''}
+    {f'for {hours} hours' if hours else ''}
+
+    Generate a concise search query to find relevant tasks. Return only the search query."""
+
+    # Use Anthropic API with your server-side API key
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+    message = client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=100,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return jsonify({
+        'suggested_search': message.content[0].text.strip()
+    })
+
 # ============================================================================
 # 11.3 Edit Task
 # ============================================================================
@@ -2405,7 +2757,14 @@ def edit_profile():
 
             # Student-specific fields
             if user.role == 'student':
-                user.university = request.form.get('university')
+                # Handle university (set FK ID, not relationship)
+                if request.form.get('university'):
+                    try:
+                        university_id = int(request.form.get('university'))
+                        user.university_id = university_id  # ✅ CORRECT
+                    except (ValueError, TypeError):
+                        pass  # Invalid ID, skip
+
                 user.grades = request.form.get('grades')
                 user.projects = request.form.get('projects')
 
@@ -2660,32 +3019,18 @@ def approve_application(app_id):
 
 
 @app.route("/admin")
-@login_required
+@admin_required
 def admin_home():
-    """
-    Admin dashboard showing:
-    - Unverified students
-    - Open disputes
-    - System statistics
-    """
-    if not getattr(current_user, "is_admin", False):
-        abort(403)
-
     unverified = User.query.filter_by(role="student", verified=False).all()
-    open_disputes = Dispute.query.filter(
-        Dispute.status != "resolved"
-    ).order_by(Dispute.created_at.desc()).all()
+    open_disputes = Dispute.query.filter(Dispute.status != "resolved").order_by(Dispute.created_at.desc()).all()
 
-    # Statistics
     students_q = User.query.filter_by(role="student")
     total_students = students_q.count()
     verified_students = students_q.filter_by(verified=True).count()
     unverified_students = students_q.filter_by(verified=False).count()
 
     total_disputes = Dispute.query.count()
-    open_disputes_count = Dispute.query.filter(
-        Dispute.status != "resolved"
-    ).count()
+    open_disputes_count = Dispute.query.filter(Dispute.status != "resolved").count()
 
     return render_template(
         "admin_home.html",
@@ -2695,7 +3040,7 @@ def admin_home():
         verified_students=verified_students,
         unverified_students=unverified_students,
         total_disputes=total_disputes,
-        open_disputes_count=open_disputes_count
+        open_disputes_count=open_disputes_count,
     )
 
 # ============================================================================
@@ -2731,53 +3076,68 @@ def company_dispute_detail(dispute_id):
     return render_template('company_dispute_detail.html', dispute=dispute)
 
 
-@app.route('/disputes', methods=['GET', 'POST'])
+@app.route("/disputes", methods=["GET", "POST"])
 @login_required
 def disputes_view():
-    if request.method == 'POST':
-        title = request.form.get('title')
-        description = request.form.get('description')
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        description = (request.form.get("description") or "").strip()
+
+        if not title and not description:
+            flash("Please enter dispute details.", "danger")
+            return redirect(url_for("disputes_view"))
 
         dispute = Dispute(
-            raised_by_user_id=current_user.id,  # USE THIS!
-            message=f"{title}\n\n{description}",  # Combine into message
-            status='open'
+            raised_by_user_id=current_user.id,
+            message=f"{title}\n\n{description}".strip(),
+            status="open",
         )
         db.session.add(dispute)
         db.session.commit()
 
+        notify_admins_of_dispute(dispute)
+
         flash("Dispute submitted!", "success")
-        return redirect(url_for('disputes_view'))
+        return redirect(url_for("disputes_view"))
 
-    # Query by raised_by_user_id
-    disputes = Dispute.query.filter_by(
-        raised_by_user_id=current_user.id
-    ).all()
-
-    return render_template('disputes.html', disputes=disputes)
+    disputes = Dispute.query.filter_by(raised_by_user_id=current_user.id).all()
+    return render_template("disputes.html", disputes=disputes)
 
 
-@app.route('/student-disputes', methods=['GET', 'POST'])
+
+
+
+
+@app.route("/student-disputes", methods=["GET", "POST"])
 @login_required
 def student_disputes():
     if current_user.role != "student":
         abort(403)
 
-    if request.method == 'POST':
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        description = (request.form.get("description") or "").strip()
+        dispute_type = (request.form.get("dispute_type") or "").strip()
+
+        msg = f"{title}\nType: {dispute_type}\n\n{description}".strip()
         dispute = Dispute(
-            student_id=current_user.id,
-            title=request.form.get('title'),
-            description=request.form.get('description'),
-            dispute_type=request.form.get('dispute_type'),
-            status='open'
+            raised_by_user_id=current_user.id,
+            message=msg,
+            status="open",
         )
+
         db.session.add(dispute)
         db.session.commit()
-        flash("Dispute submitted!", "success")
-        return redirect(url_for('student_disputes'))
 
-    disputes = Dispute.query.filter_by(student_id=current_user.id).all()
-    return render_template('student_disputes.html', disputes=disputes)
+        notify_admins_of_dispute(dispute)
+
+        flash("Dispute submitted!", "success")
+        return redirect(url_for("student_disputes"))
+
+    disputes = Dispute.query.filter_by(raised_by_user_id=current_user.id).all()
+    return render_template("student_disputes.html", disputes=disputes)
+
+
 
 
 @app.route('/admin-disputes')

@@ -63,7 +63,7 @@ Removed modal popup, replaced with direct navigation to edit_portfolio page
     <div class="rating-display">
       {% if rating_count > 0 %}
         <div class="stars-large mb-3">
-          {% set full_stars = (rating_avg)|round(0, 'floor')|int %}
+          {% set full_stars = (rating_avg)|round(0, 'common')|int %}
           {% set empty_stars = 5 - full_stars %}
           {% for i in range(full_stars) %}
             <i class="bi bi-star-fill"></i>

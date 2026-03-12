@@ -13,11 +13,17 @@
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Role</label>
-              <select name="role" class="form-select form-select-lg" id="roleSelect">
-                <option value="student">Student</option>
-                <option value="company">Company</option>
-                <option value="university">University</option>
-              </select>
+             <select name="role" id="role" class="form-select">
+                  <option value="student">Student</option>
+                  <option value="company">Company</option>
+                  <option value="university">University</option>
+                  <option value="admin">Admin</option>
+                </select>
+                            <div id="adminCodeWrap" style="display:none;" class="mt-3">
+              <label for="admin_code" class="form-label">Admin Registration Code</label>
+              <input type="password" class="form-control" id="admin_code" name="admin_code" placeholder="Enter admin code">
+              <small class="text-muted">Required only when registering an Admin account.</small>
+            </div>
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Email</label>
@@ -124,46 +130,71 @@
 </div>
 
 <script>
-  const roleSelect = document.getElementById('roleSelect');
+  // FIX: the select has id="role", not "roleSelect"
+  const roleSelect = document.getElementById('role');
   const logoInput = document.getElementById('logo');
   const logoPreview = document.getElementById('logoPreview');
   const logoPreviewImg = document.getElementById('logoPreviewImg');
+  const adminCodeWrap = document.getElementById('adminCodeWrap');
+  const adminCodeInput = document.getElementById('admin_code');
 
   function updateSections() {
     const role = roleSelect.value;
+
     document.getElementById('studentSection').style.display = role === 'student' ? '' : 'none';
     document.getElementById('companySection').style.display = role === 'company' ? '' : 'none';
     document.getElementById('universitySection').style.display = role === 'university' ? '' : 'none';
+
+    // Show admin code + make it required only when admin
+    const isAdmin = role === 'admin';
+    if (adminCodeWrap) adminCodeWrap.style.display = isAdmin ? 'block' : 'none';
+    if (adminCodeInput) adminCodeInput.required = isAdmin;
   }
 
-  logoInput.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (file) {
+  if (logoInput) {
+    logoInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) {
+        if (logoPreview) logoPreview.style.display = 'none';
+        return;
+      }
       const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg+xml'];
       if (!validTypes.includes(file.type)) {
         alert('Invalid file type');
         logoInput.value = '';
-        logoPreview.style.display = 'none';
+        if (logoPreview) logoPreview.style.display = 'none';
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
         alert('File too large');
         logoInput.value = '';
-        logoPreview.style.display = 'none';
+        if (logoPreview) logoPreview.style.display = 'none';
         return;
       }
       const reader = new FileReader();
-      reader.onload = function(e) {
-        logoPreviewImg.src = e.target.result;
-        logoPreview.style.display = 'block';
+      reader.onload = function(ev) {
+        if (logoPreviewImg) logoPreviewImg.src = ev.target.result;
+        if (logoPreview) logoPreview.style.display = 'block';
       };
       reader.readAsDataURL(file);
-    } else {
-      logoPreview.style.display = 'none';
-    }
-  });
+    });
+  }
 
   roleSelect.addEventListener('change', updateSections);
   updateSections();
+</script>
+<script>
+  const roleSelect = document.getElementById('role');
+  const adminCodeWrap = document.getElementById('adminCodeWrap');
+
+  function toggleAdminCode() {
+    const isAdmin = (roleSelect && roleSelect.value === 'admin');
+    if (adminCodeWrap) adminCodeWrap.style.display = isAdmin ? 'block' : 'none';
+  }
+
+  if (roleSelect) {
+    roleSelect.addEventListener('change', toggleAdminCode);
+    toggleAdminCode();
+  }
 </script>
 {% endblock %}
