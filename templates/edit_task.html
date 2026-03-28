@@ -1,20 +1,20 @@
-<!--code layout is from chatgpt-->
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
+
+{% block page_title %}Edit Task{% endblock %}
+
 {% block content %}
-
-
-{# Edit an existing task and allow deletion from the same page
-
-{# Form posts back to /tasks/<id>/edit#}
-{# Delete submits a POST to /tasks/<id>/delete with a confirmation#}
-
-
 <div class="row justify-content-center">
-  <div class="col-lg-7">
-    <div class="card shadow-sm">
+  <div class="col-lg-8">
+    <div class="card shadow-sm mb-3">
       <div class="card-body p-4">
-        <h5 class="mb-3">Edit task</h5>
+        <h3 class="mb-3">Edit Task</h3>
 
         <form method="post" class="mb-3">
           <div class="mb-3">
@@ -29,15 +29,19 @@
             <label class="form-label">Estimated hours</label>
             <input name="estimated_hours" type="number" min="1" class="form-control" value="{{ task.estimated_hours or '' }}">
           </div>
-          <div class="d-flex gap-2">
+          <div class="inline-actions">
             <button class="btn btn-primary">Save changes</button>
-            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+            <a href="{{ url_for('company_dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
           </div>
         </form>
+      </div>
+    </div>
 
-        <hr>
-
-        <form method="post" action="{{ url_for('delete_task', task_id=task.id) }}" onsubmit="return confirm('Delete this task?');">
+    <div class="card border-danger">
+      <div class="card-body">
+        <h4 class="mb-2 text-danger">Danger Zone</h4>
+        <p class="text-muted">Deleting this task will remove all associated applications. This action cannot be undone.</p>
+        <form method="post" action="{{ url_for('delete_task', task_id=task.id) }}" onsubmit="return confirm('Delete this task?');" class="inline-actions">
           <button class="btn btn-outline-danger">Delete task</button>
         </form>
       </div>

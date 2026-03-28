@@ -1,38 +1,99 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Browse Tasks</title>
-  <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
+<h2 class="mb-3">Available Tasks</h2>
 
-<h1>Browse Tasks</h1>
+<!-- Apply Success Modal -->
+<div class="modal fade" id="applySuccessModal" tabindex="-1" aria-labelledby="applySuccessModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center p-4">
+        <div class="display-4 mb-2" style="line-height:1;">
+          <i class="bi bi-check-circle-fill text-success"></i>
+        </div>
+        <h5 class="mb-1">Application Sent</h5>
+        <p class="text-muted mb-0">You applied to the task. We'll notify you of updates.</p>
+      </div>
+      <div class="modal-footer border-0 justify-content-center pb-4">
+        <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">Great!</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-<div id="tasks"></div>
+<!-- Search/Filter Form -->
+<form method="get" class="card filter-card p-3 shadow-sm mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="input-group">
+  <input type="text" name="q" class="form-control" placeholder="Search tasks..." value="{{ q or '' }}">
+  <button class="btn btn-primary" type="submit">
+    <i class="bi bi-search"></i> Search
+  </button>
+  <button class="btn btn-info" type="button" data-bs-toggle="modal" data-bs-target="#aiSearchModal">
+    <i class="bi bi-sparkles"></i> AI Enhance
+  </button>
+</div>
+      <label class="form-label">Max hours</label>
+      <input type="number" class="form-control" name="hours_max" min="1" placeholder="e.g. 10" value="{{ hours_max or '' }}">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100">Search</button>
+    </div>
+  </div>
+</form>
+
+<!-- Tasks List -->
+{% if tasks and tasks|length > 0 %}
+  {% for task in tasks %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <h5 class="mb-1">{{ task.title }}</h5>
+            <div class="text-muted small">
+              {{ task.company.name if task.company else 'Company' }}
+              {% if task.estimated_hours %} • {{ task.estimated_hours }} hrs{% endif %}
+            </div>
+          </div>
+          <a href="{{ url_for('task_detail', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">View Task</a>
+        </div>
+
+        <p class="mb-2">{{ task.description }}</p>
+
+        {% if task.tags %}
+          <div class="mb-2">
+            {% for tag in task.tags.split(',') %}
+              <span class="badge bg-light text-dark border me-1">{{ tag }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <!-- Apply Button - Only for authenticated students -->
+        {% if current_user.is_authenticated and current_user.role == 'student' %}
+          <form method="POST" action="{{ url_for('apply_to_task', task_id=task.id) }}">
+            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <p class="text-muted">No tasks found. Try adjusting filters.</p>
+{% endif %}
+
+<a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">← Back to Dashboard</a>
 
 <script>
-fetch("/tasks")
-  .then(res => res.json())
-  .then(tasks => {
-    const container = document.getElementById("tasks");
-
-    if (tasks.length === 0) {
-      container.innerText = "No tasks available.";
-      return;
-    }
-
-    tasks.forEach(task => {
-      const div = document.createElement("div");
-      div.innerHTML = `
-        <h3>${task.title}</h3>
-        <p>${task.description || "No description provided"}</p>
-        <p><strong>Estimated hours:</strong> ${task.estimated_hours || "N/A"}</p>
-      `;
-      container.appendChild(div);
-    });
-  });
+  // Show modal if user just applied
+  {% if applied %}
+    (function () {
+      var el = document.getElementById('applySuccessModal');
+      if (el) {
+        var modal = new bootstrap.Modal(el);
+        modal.show();
+      }
+    })();
+  {% endif %}
 </script>
 
-</body>
-</html>
+
+{% endblock %}

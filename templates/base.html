@@ -1,84 +1,285 @@
-<!--code layout is from chatgpt-->
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
 
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 <!doctype html>
-<html lang="en" data-theme="dark>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>STEP</title>
+  <title>{% block title %}STEP{% endblock %}</title>
 
-    <!-- Tailwind + DaisyUI -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.6.0/dist/full.css" rel="stylesheet" />
+  <!-- Bootstrap Icons (keep for icons) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
+  <!-- Bootstrap CSS (keep for compatibility) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+  <!-- NEW: Modern Custom Styles (loads LAST to override everything) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-light">
-<nav class="navbar navbar-expand-lg bg-white border-bottom">
-  <div class="container">
-    <a class="navbar-brand fw-semibold" href="{{ url_for('index') }}">STEP</a>
-    <div class="ms-auto">
-  {% if current_user.is_authenticated %}
-        {% if current_user.is_authenticated %}
-<ul class="navbar-nav">
-  <li class="nav-item dropdown">
-    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-      <i class="bi bi-person-circle fs-4 me-2"></i> {# profile icon #}
-      <span class="d-none d-sm-inline">{{ current_user.name }}</span> {# show name on sm+ #}
-    </a>
-    <ul class="dropdown-menu dropdown-menu-end">
-      <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person-lines-fill me-2"></i>Edit profile</a></li>
-      <li><hr class="dropdown-divider"></li>
-      <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
-    </ul>
-  </li>
-</ul>
-{% endif %}
 
-<ul class="navbar-nav">
-  <li class="nav-item dropdown">
+<body>
+  <!-- ============================================
+       MODERN NAVIGATION BAR
+       Fixed position, blur effect, responsive
+       ============================================ -->
+  <nav class="navbar" id="navbar">
+    <div class="navbar-container">
+      <!-- Logo/Brand -->
+      <a class="navbar-logo" href="{{ url_for('index') }}">
+        <svg class="brand-svg" width="24" height="24" viewBox="0 0 24 24" style="display: inline-block; vertical-align: middle; margin-right: 8px;">
+          <defs>
+            <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#00ff88"/>
+              <stop offset="100%" stop-color="#00cc6f"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#brandGrad)" d="M12 2l1.9 5.3L19 9l-5.1 1.7L12 16l-1.9-5.3L5 9l5.1-1.7L12 2z"/>
+        </svg>
+        <span>STEP</span>
       </a>
-    <ul class="dropdown-menu dropdown-menu-end">
-      <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person-lines-fill me-2"></i>Edit profile</a></li>
-      <li><hr class="dropdown-divider"></li>
-      <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
-    </ul>
-  </li>
-</ul>
 
-        <ul class="dropdown-menu dropdown-menu-end">
-          <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person-lines-fill me-2"></i>Edit profile</a></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
-        </ul>
-      </li>
-    </ul>
-  {% else %}
-    <a class="btn btn-primary btn-sm" href="{{ url_for('register') }}">Sign up</a>
-  {% endif %}
-</div>
+      <!-- Navigation Menu -->
+      <ul class="navbar-menu" id="navMenu">
+        {% if current_user.is_authenticated %}
+          {% if current_user.role == "student" %}
+            <li><a class="navbar-link" href="{{ url_for('browse_tasks') }}"><i class="bi bi-search"></i> Browse Tasks</a></li>
+            <li><a class="navbar-link" href="{{ url_for('disputes_view') }}"><i class="bi bi-exclamation-triangle"></i> Disputes</a></li>
+            <li>
+              <a class="navbar-link" href="{{ url_for('student_notifications') }}" style="position: relative;">
+                <i class="bi bi-bell"></i> Notifications
+                {% if unread_count and unread_count > 0 %}
+                  <span class="badge bg-danger" style="position: absolute; top: -5px; right: -10px; font-size: 0.65rem;">{{ unread_count }}</span>
+                {% endif %}
+              </a>
+            </li>
+          {% elif current_user.role == "company" %}
+            <li><a class="navbar-link" href="{{ url_for('company_dashboard') }}"><i class="bi bi-speedometer"></i> Dashboard</a></li>
+            <li><a class="navbar-link" href="{{ url_for('add_task') }}"><i class="bi bi-plus-circle"></i> Post Task</a></li>
+          {% elif current_user.role == "admin" %}
+            <li><a class="navbar-link" href="{{ url_for('admin_home') }}"><i class="bi bi-shield-lock"></i> Admin Home</a></li>
+            <li><a class="navbar-link" href="{{ url_for('admin_disputes') }}"><i class="bi bi-journal-text"></i> Disputes</a></li>
+            <li><a class="navbar-link" href="{{ url_for('admin_users') }}"><i class="bi bi-people"></i> Users</a></li>
+          {% elif current_user.role == "university" %}
+            <li><a class="navbar-link" href="{{ url_for('university_dashboard') }}"><i class="bi bi-mortarboard"></i> University Dashboard</a></li>
+          {% endif %}
 
+          <!-- Profile Dropdown (authenticated users) -->
+          <li class="nav-item dropdown" style="list-style: none; position: relative;">
+            <a class="navbar-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-person-circle"></i> {{ current_user.name }}
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person-lines-fill me-2"></i>Profile</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('disputes_view') }}"><i class="bi bi-exclamation-triangle me-2"></i>Disputes</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form method="post" action="{{ url_for('logout') }}" style="margin: 0;">
+                  <button class="dropdown-item text-danger" type="submit">
+                    <i class="bi bi-box-arrow-right me-2"></i>Logout
+                  </button>
+                </form>
+              </li>
+            </ul>
+          </li>
+        {% else %}
+          <!-- Not logged in -->
+          <li><a class="navbar-link" href="{{ url_for('login') }}">Login</a></li>
+          <li><a class="navbar-btn" href="{{ url_for('register') }}">Sign Up</a></li>
+        {% endif %}
+      </ul>
+
+      <!-- Mobile Menu Toggle Button -->
+      <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation">
+        <i class="bi bi-list"></i>
+      </button>
     </div>
-  </div>
-</nav>
-<main class="container py-4">
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
+  </nav>
+
+  <!-- ============================================
+       MAIN CONTENT AREA
+       Has padding-top to account for fixed navbar
+       ============================================ -->
+  <!-- Add margin-top to main-content -->
+  <main class="main-content" style="padding-top: 100px;">
+    <div class="container">
+
+      <!-- Back Button (if needed) -->
+      {% if request.referrer %}
       <div class="mb-3">
-        {% for cat, msg in messages %}
-          <div class="alert alert-{{cat}}">{{ msg }}</div>
-        {% endfor %}
+        <a href="{{ request.referrer }}" class="btn btn-secondary btn-sm">
+          <i class="bi bi-arrow-left"></i> Back
+        </a>
       </div>
-    {% endif %}
-  {% endwith %}
-  {% block content %}{% endblock %}
-</main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+      {% endif %}
+
+      <!-- Page Title Block -->
+      {% block page_title %}{% endblock %}
+
+      <!-- Flash Messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="mb-4">
+            {% for category, msg in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- Main Page Content -->
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Realtime Toast Container (for notifications) -->
+  <div id="realtime-container" style="position:fixed; top:90px; right:16px; z-index:1080; display:flex; flex-direction:column; gap:10px; max-width: 400px;"></div>
+
+  <!-- ============================================
+       JAVASCRIPT
+       ============================================ -->
+
+  <!-- Bootstrap JS (keep for dropdowns, modals, etc.) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- NEW: Modern Navigation Scripts -->
+  <script>
+    // ==========================================
+    // Navbar Scroll Effect
+    // ==========================================
+    const navbar = document.getElementById('navbar');
+    if (navbar) {
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 50) {
+          navbar.classList.add('scrolled');
+        } else {
+          navbar.classList.remove('scrolled');
+        }
+      });
+    }
+
+    // ==========================================
+    // Mobile Menu Toggle
+    // ==========================================
+    const menuToggle = document.getElementById('menuToggle');
+    const navMenu = document.getElementById('navMenu');
+
+    if (menuToggle && navMenu) {
+      menuToggle.addEventListener('click', () => {
+        navMenu.classList.toggle('active');
+
+        // Change icon
+        const icon = menuToggle.querySelector('i');
+        if (navMenu.classList.contains('active')) {
+          icon.className = 'bi bi-x-lg';
+        } else {
+          icon.className = 'bi bi-list';
+        }
+      });
+
+      // Close menu when clicking a link (mobile)
+      const navLinks = navMenu.querySelectorAll('.navbar-link, .navbar-btn');
+      navLinks.forEach(link => {
+        link.addEventListener('click', () => {
+          if (window.innerWidth <= 768) {
+            navMenu.classList.remove('active');
+            const icon = menuToggle.querySelector('i');
+            icon.className = 'bi bi-list';
+          }
+        });
+      });
+    }
+  </script>
+
+  <!-- Real-time Notifications (SSE) -->
+  {% if current_user.is_authenticated %}
+  <script>
+    (function () {
+      try {
+        const evt = new EventSource("{{ url_for('sse_events') }}");
+
+        function showToast(title, message, type) {
+          const container = document.getElementById("realtime-container");
+
+          // Limit to 3 visible toasts
+          while (container.children.length >= 3) {
+            container.removeChild(container.firstElementChild);
+          }
+
+          const wrapper = document.createElement("div");
+          wrapper.className = "alert alert-dismissible fade show shadow-lg d-flex align-items-center";
+
+          // Use contextual colors
+          let cls = "alert-info";
+          if (type === "student_accepted" || type === "selected") cls = "alert-success";
+          if (type === "student_declined") cls = "alert-warning";
+          wrapper.classList.add(cls);
+
+          const icon = document.createElement("i");
+          const iconMap = {
+            selected: "bi bi-star-fill",
+            student_applied: "bi bi-person-plus-fill",
+            student_uploaded: "bi bi-cloud-arrow-up-fill",
+            student_accepted: "bi bi-check-circle-fill",
+            student_declined: "bi bi-x-circle-fill",
+            default: "bi bi-bell-fill"
+          };
+          icon.className = (iconMap[type] || iconMap.default) + " me-2";
+          wrapper.appendChild(icon);
+
+          const strong = document.createElement("strong");
+          strong.className = "ms-1";
+          strong.textContent = (title || "Update") + " ";
+          wrapper.appendChild(strong);
+
+          const span = document.createElement("span");
+          span.className = "ms-1";
+          span.textContent = message || "";
+          wrapper.appendChild(span);
+
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn-close ms-auto";
+          btn.setAttribute("data-bs-dismiss", "alert");
+          btn.setAttribute("aria-label", "Close");
+          wrapper.appendChild(btn);
+
+          container.appendChild(wrapper);
+
+          // Auto-dismiss after 6s
+          const autoDismissTypes = new Set(["student_applied","student_uploaded","student_accepted","selected","default"]);
+          if (autoDismissTypes.has(type)) {
+            setTimeout(() => {
+              try {
+                const alert = bootstrap.Alert.getOrCreateInstance(wrapper);
+                alert.close();
+              } catch (_) {}
+            }, 6000);
+          }
+        }
+
+        evt.onmessage = function (e) {
+          try {
+            const data = JSON.parse(e.data || "{}");
+            showToast(data.title || "Update", data.message || "", data.type || "default");
+            document.dispatchEvent(new CustomEvent("sse-event", { detail: data }));
+          } catch (_) {}
+        };
+      } catch (e) { /* no-op */ }
+    })();
+  </script>
+  {% endif %}
+
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

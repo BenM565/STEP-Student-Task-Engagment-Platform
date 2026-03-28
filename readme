@@ -1,0 +1,7 @@
+References:
+- Flask: https://flask.palletsprojects.com/
+- Flask-Login: https://flask-login.readthedocs.io/
+- SQLAlchemy: https://flask-sqlalchemy.palletsprojects.com/
+- Werkzeug: https://werkzeug.palletsprojects.com/
+- ChatGPT + Claude AI was used to assist in frameworks for all files
+"""

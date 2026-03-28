@@ -1,0 +1,125 @@
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
+{% extends "base.html" %}
+
+{% block page_title %}University Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+    <div>
+      <h2 class="mb-1">{{ university.name if university else "All Universities" }}</h2>
+      <div class="text-muted small">
+        {% if university %}
+          Domain: {{ university.domain }}
+        {% else %}
+          Admin view
+        {% endif %}
+      </div>
+    </div>
+
+    <form class="d-flex flex-wrap align-items-end gap-2" method="get">
+      {% if can_switch and university %}
+        <input type="hidden" name="university_id" value="{{ university.id }}">
+      {% endif %}
+      <div>
+        <label class="form-label small mb-1">Start</label>
+        <input type="date" class="form-control" name="start" value="{{ start }}">
+      </div>
+      <div>
+        <label class="form-label small mb-1">End</label>
+        <input type="date" class="form-control" name="end" value="{{ end }}">
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary">Apply</button>
+        <a class="btn btn-outline-secondary"
+           href="{{ url_for('university_dashboard_export', start=start, end=end, university_id=(university.id if university else None)) }}">Export CSV</a>
+      </div>
+    </form>
+  </div>
+
+  {% if can_switch and not university %}
+    <div class="alert alert-info">
+      Tip: Append <code>?university_id=&lt;id&gt;</code> to filter to a specific university.
+    </div>
+  {% endif %}
+
+  <!-- KPI Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-6 col-lg-3">
+      <div class="task-card h-100">
+        <div class="task-header"><h3 class="task-title">Students</h3></div>
+        <div class="display-6">{{ total_students }}</div>
+        <div class="text-muted small">Total registered</div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+      <div class="task-card h-100">
+        <div class="task-header"><h3 class="task-title">Verified</h3></div>
+        <div class="display-6">{{ verified_students }}</div>
+        <div class="text-muted small">Verified student accounts</div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+      <div class="task-card h-100">
+        <div class="task-header"><h3 class="task-title">Applications</h3></div>
+        <div class="display-6">{{ applications_count }}</div>
+        <div class="text-muted small">Within date range</div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+      <div class="task-card h-100">
+        <div class="task-header"><h3 class="task-title">Selected</h3></div>
+        <div class="display-6">{{ selections_count }}</div>
+        <div class="text-muted small">Students selected by companies</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-6">
+      <div class="task-card h-100">
+        <div class="task-header"><h3 class="task-title">Approvals & Completion</h3></div>
+        <div class="d-flex align-items-center gap-4">
+          <div>
+            <div class="h2 mb-0">{{ approvals_count }}</div>
+            <div class="text-muted small">Approvals</div>
+          </div>
+          <div>
+            <div class="h2 mb-0">{{ '%.1f'|format(completion_rate) }}%</div>
+            <div class="text-muted small">Completion rate</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6">
+      <div class="task-card h-100">
+        <div class="task-header"><h3 class="task-title">Average Rating</h3></div>
+        <div class="display-6">{{ '%.2f'|format(avg_rating) }}</div>
+        <div class="text-muted small">Across visible reviews in range</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="task-card">
+    <div class="task-header">
+      <h3 class="task-title">Top Skills/Tags</h3>
+    </div>
+    {% if top_tags and top_tags|length > 0 %}
+      <div class="d-flex flex-wrap gap-2">
+        {% for tag, count in top_tags %}
+          <span class="badge bg-light text-dark border">{{ tag }} <span class="text-muted">× {{ count }}</span></span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-muted">No tag data in selected range.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

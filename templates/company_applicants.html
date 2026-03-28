@@ -1,27 +1,215 @@
-<h1>Applicants</h1>
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
 
-<table border="1">
-  <tr>
-    <th>Name</th>
-    <th>Email</th>
-    <th>Status</th>
-    <th>Action</th>
-  </tr>
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
+{% extends "base.html" %}
 
-  {% for a in applicants %}
-  <tr>
-    <td>{{ a.name }}</td>
-    <td>{{ a.email }}</td>
-    <td>{{ a.status }}</td>
-    <td>
-      {% if a.status == 'pending' %}
-        <a href="/company/application/{{ a.id }}/select">
-          Select candidate
-        </a>
+{% block page_title %}Applicants • {{ task.title }}{% endblock %}
+
+{% block content %}
+<div class="container applicants-page">
+  <div class="mb-3">
+    <h2 class="mb-1">Applicants for “{{ task.title }}”</h2>
+    <p class="text-muted">Review candidates, their references, project media, and submissions.</p>
+  </div>
+
+  {% if applications %}
+    {% for application in applications %}
+      {% if application %}
+      <div class="applicant-card">
+        <div class="card-body">
+            <!-- DEBUG: See actual status -->
+
+          <!-- Student Overview -->
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+            <div>
+              <h4 class="mb-1">{{ application.student.name }}</h4>
+              <div class="small text-muted">Email: {{ application.student.email }}</div>
+            </div>
+            <div>
+              <span class="badge {{ 'bg-success' if application.status == 'selected' else ('bg-warning' if application.status == 'pending' else 'bg-secondary') }}">
+                {{ application.status|title }}
+              </span>
+            </div>
+          </div>
+
+          {% if application.student.skills %}
+            <div class="mb-3">
+              <div class="small text-muted">Skills</div>
+              <div>{{ application.student.skills }}</div>
+            </div>
+          {% endif %}
+
+          <!-- References -->
+          {% set refs = application.student.lecturer_references or [] %}
+          <div class="mb-3">
+            <h5 class="mb-2">Lecturer References</h5>
+                {% if refs.all()|length > 0 %}              <ul class="list-group shadow-soft rounded-12">
+                {% for ref in refs %}
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ ref.lecturer_name }}
+                    <span class="badge bg-primary">Reference</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="text-muted mb-0">No references provided.</p>
+            {% endif %}
+          </div>
+
+          <!-- Project Media -->
+          {% set media_list = application.student.project_media or [] %}
+          <div class="mb-3">
+            <h5 class="mb-2">Project Media</h5>
+            {% if media_list|length > 0 %}
+              <div class="d-flex flex-wrap gap-2">
+                {% for media in media_list %}
+                  <a class="btn btn-sm btn-outline-primary"
+                     target="_blank"
+                     href="{{ url_for('static', filename='uploads/' + media.filename) }}">
+                    {{ media.title or "View media" }}
+                  </a>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted mb-0">No project media available.</p>
+            {% endif %}
+          </div>
+
+          <!-- Submission Review -->
+          <div class="mb-3">
+            <h5 class="mb-2">Submission</h5>
+            {% if application.student_file %}
+              <div class="inline-actions mb-2">
+                <a class="btn btn-sm btn-primary"
+                   target="_blank"
+                   href="{{ url_for('static', filename='uploads/' + application.student_file) }}">
+                  View Student Submission
+                </a>
+              </div>
+
+              {% if application.review_status %}
+                <div class="mb-2">
+                  <span class="badge {{ 'bg-success' if application.review_status == 'approved' else 'bg-warning' }}">
+                    {{ application.review_status.replace('_',' ')|title }}
+                  </span>
+                  {% if application.review_feedback %}
+                    <div class="text-muted small mt-1">Feedback: {{ application.review_feedback }}</div>
+                  {% endif %}
+                </div>
+              {% endif %}
+
+              <form method="post" action="{{ url_for('review_submission', application_id=application.id) }}" class="mt-2">
+                <div class="row g-2">
+                  <div class="col-sm-4">
+                    <label class="form-label">Decision</label>
+                    <select name="review_status" class="form-select">
+                      {% if application.review_status == 'approved' %}
+                        <option value="approved" selected>Approve</option>
+                      {% else %}
+                        <option value="approved">Approve</option>
+                      {% endif %}
+                      {% if application.review_status == 'changes_requested' %}
+                        <option value="changes_requested" selected>Request Changes</option>
+                      {% else %}
+                        <option value="changes_requested">Request Changes</option>
+                      {% endif %}
+                    </select>
+                  </div>
+                  <div class="col-sm-8">
+                    <label class="form-label">Feedback (optional)</label>
+                    <textarea name="feedback" class="form-control" rows="2">{{ application.review_feedback or '' }}</textarea>
+                  </div>
+                </div>
+                <div class="mt-2">
+                  <button class="btn btn-outline-primary btn-sm">Submit Review</button>
+                </div>
+              </form>
+
+              <!-- Company rates the student after completion -->
+              {% if application.status == 'completed' %}
+                {% set rev = existing_reviews.get(application.id) if existing_reviews else None %}
+                {% set editable = not rev or edit_allowed.get(application.id) %}
+                <hr>
+                <h6 class="mb-2">Rate this student</h6>
+                <form method="post" action="{{ url_for('create_or_update_review', application_id=application.id) }}" class="form-compact">
+                  <div class="mb-2">
+                    <div class="form-label mb-1">Rating</div>
+                    <div class="rating {% if not editable %}readonly{% endif %}">
+                      {% for i in [5,4,3,2,1] %}
+                        <input type="radio" id="rate-{{ application.id }}-{{ i }}" name="rating" value="{{ i }}"
+                               {% if rev and rev.rating == i %}checked{% elif not rev and i == 5 %}checked{% endif %}
+                               {% if not editable %}disabled{% endif %}>
+                        <label for="rate-{{ application.id }}-{{ i }}">★</label>
+                      {% endfor %}
+                    </div>
+                    {% if rev and not editable %}
+                      <input type="hidden" name="rating" value="{{ rev.rating }}">
+                      <div class="text-muted small mt-1">Edit window has expired.</div>
+                    {% endif %}
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label">Comment (optional)</label>
+                    <textarea name="comment" class="form-control" rows="2" {% if not editable %}disabled{% endif %}>{{ rev.comment if rev else '' }}</textarea>
+                    {% if rev and not editable %}
+                      <input type="hidden" name="comment" value="{{ rev.comment }}">
+                    {% endif %}
+                  </div>
+                  <div>
+                    {% if rev %}
+                      <button class="btn btn-primary btn-sm" {% if not editable %}disabled{% endif %}>Update</button>
+                    {% else %}
+                      <button class="btn btn-success btn-sm">Submit</button>
+                    {% endif %}
+                  </div>
+                </form>
+              {% endif %}
+
+            {% else %}
+              <p class="text-muted mb-0">No submission from this student yet.</p>
+            {% endif %}
+          </div>
+
+          <!-- Selection / Company Media -->
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <a
+              href="{{ url_for('company_view_student', student_id=application.student.id) }}"
+              class="btn btn-outline-secondary btn-sm"
+            >
+              View Student Profile
+            </a>
+            <!-- This should already be correct from our earlier fix -->
+            {% if not application.status or application.status in ["pending"] %}
+              <form method="POST" action="{{ url_for('accept_application', app_id=application.id) }}">
+                <button class="btn btn-success btn-sm">Select Student</button>
+              </form>
+            {% endif %}
+
+            {% if application.status == 'selected' %}
+              <form action="{{ url_for('upload_media', application_id=application.id) }}" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
+                <input type="file" name="file" class="form-control form-control-sm" required>
+                <button type="submit" class="btn btn-primary btn-sm">Upload Company Media</button>
+              </form>
+              {% if application.media_file %}
+                <a class="btn btn-sm btn-outline-success"
+                   target="_blank"
+                   href="{{ url_for('static', filename='uploads/' + application.media_file) }}">
+                  View Company Media
+                </a>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
       {% endif %}
-    </td>
-  </tr>
-  {% endfor %}
-</table>
+    {% endfor %}
+  {% else %}
+    <div class="alert alert-info">No applicants yet.</div>
+  {% endif %}
 
-<a href="/company/dashboard">Back</a>
+  <a href="{{ url_for('browse_tasks') }}" class="btn btn-outline-secondary">← Back to Browse Tasks</a>
+</div>
+{% endblock %}

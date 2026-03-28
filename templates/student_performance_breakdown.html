@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+  <h2 class="mb-4">My Performance Breakdown</h2>
+
+  <!-- Summary Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <div class="display-4 fw-bold text-primary">{{ metrics.tasks_completed }}</div>
+          <div class="text-muted small">Tasks Completed</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <div class="display-4 fw-bold text-success">{{ metrics.on_time_pct }}%</div>
+          <div class="text-muted small">On-Time Delivery</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <div class="display-4 fw-bold text-info">{{ metrics.first_pass_pct }}%</div>
+          <div class="text-muted small">First-Pass Rate</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body text-center">
+          <div class="display-4 fw-bold text-warning">{{ metrics.avg_rating }}/5</div>
+          <div class="text-muted small">Average Rating</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Details Section -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h4 class="mb-3">Performance Details</h4>
+
+      <div class="row">
+        <div class="col-md-6">
+          <p><strong>Tasks Completed:</strong> {{ metrics.tasks_completed }}</p>
+          <p><strong>On-Time Deliveries:</strong> {{ metrics.on_time_count }}/{{ metrics.tasks_completed }}</p>
+          <p><strong>First-Pass Approvals:</strong> {{ metrics.first_pass_count }}/{{ metrics.tasks_completed }}</p>
+        </div>
+        <div class="col-md-6">
+          <p><strong>Total Reviews:</strong> {{ metrics.review_count }}</p>
+          <p><strong>Average Rating:</strong> {{ metrics.avg_rating }}/5.0</p>
+          <p><strong>Revision Requests:</strong> {{ metrics.change_requests }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+  <h2>Edit Profile</h2>
+
+  <form method="POST">
+    <div class="mb-3">
+      <label>Name</label>
+      <input type="text" name="name" class="form-control" value="{{ student.name }}" required>
+    </div>
+
+    <div class="mb-3">
+      <label>Skills (comma separated)</label>
+      <textarea name="skills" class="form-control">{{ student.skills }}</textarea>
+    </div>
+
+    <div class="mb-3">
+      <label>Grades</label>
+      <textarea name="grades" class="form-control">{{ student.grades }}</textarea>
+    </div>
+
+    <div class="mb-3">
+      <label>Projects</label>
+      <textarea name="projects" class="form-control">{{ student.projects }}</textarea>
+    </div>
+
+    <div class="mb-3">
+      <label>Portfolio URL Slug</label>
+      <input type="text" name="profile_url" class="form-control" value="{{ student.profile_url }}">
+      <small class="text-muted">
+        Your portfolio will be available at: /portfolio/{{ student.profile_url }}
+      </small>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">Cancel</a>
+  </form>
+</div>
+
+{% endblock %}

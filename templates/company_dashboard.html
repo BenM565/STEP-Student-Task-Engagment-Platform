@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block page_title %}{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h2 class="mb-1 fw-bold">My Tasks</h2>
+        <p class="text-muted small mb-0">Manage your postings and review applicants.</p>
+      </div>
+      <a href="{{ url_for('add_task') }}" class="btn btn-success btn-md px-4 py-2" style="border-radius: 50px;">
+        <i class="bi bi-plus-circle me-2"></i> Create Task
+      </a>
+    </div>
+
+    <!-- QUICK ACTION CARDS - COMPACT -->
+    <div class="row g-3 mb-4">
+      <div class="col-lg-3 col-md-6">
+        <a href="{{ url_for('add_task') }}" class="card border-0 shadow-sm text-decoration-none text-reset" style="transition: all 0.3s; border-radius: 12px;">
+          <div class="card-body p-4 text-center">
+            <div class="rounded-circle bg-primary bg-opacity-10 p-3 d-inline-block mb-2">
+              <i class="bi bi-plus-circle text-primary" style="font-size: 1.5rem;"></i>
+            </div>
+            <h6 class="fw-bold mb-1">Post Task</h6>
+            <p class="text-muted small mb-0">Create opportunity</p>
+          </div>
+        </a>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <a href="{{ url_for('company_students') }}" class="card border-0 shadow-sm text-decoration-none text-reset" style="transition: all 0.3s; border-radius: 12px;">
+          <div class="card-body p-4 text-center">
+            <div class="rounded-circle bg-success bg-opacity-10 p-3 d-inline-block mb-2">
+              <i class="bi bi-person-check text-success" style="font-size: 1.5rem;"></i>
+            </div>
+            <h6 class="fw-bold mb-1">Previous Students</h6>
+            <p class="text-muted small mb-0">Your work history</p>
+          </div>
+        </a>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <a href="{{ url_for('profile') }}" class="card border-0 shadow-sm text-decoration-none text-reset" style="transition: all 0.3s; border-radius: 12px;">
+          <div class="card-body p-4 text-center">
+            <div class="rounded-circle bg-info bg-opacity-10 p-3 d-inline-block mb-2">
+              <i class="bi bi-person text-info" style="font-size: 1.5rem;"></i>
+            </div>
+            <h6 class="fw-bold mb-1">Profile</h6>
+            <p class="text-muted small mb-0">Update company</p>
+          </div>
+        </a>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <a href="{{ url_for('company_search_students') }}" class="card border-0 shadow-sm text-decoration-none text-reset" style="transition: all 0.3s; border-radius: 12px;">
+          <div class="card-body p-4 text-center">
+            <div class="rounded-circle bg-warning bg-opacity-10 p-3 d-inline-block mb-2">
+              <i class="bi bi-search text-warning" style="font-size: 1.5rem;"></i>
+            </div>
+            <h6 class="fw-bold mb-1">Search Students</h6>
+            <p class="text-muted small mb-0">Find & filter</p>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <ul class="nav nav-tabs border-bottom mb-4" id="companyDashTabs" role="tablist">
+      <li class="nav-item">
+        <button class="nav-link active fw-semibold" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">Overview</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link fw-semibold" id="notifications-tab" data-bs-toggle="tab" data-bs-target="#notifications" type="button">
+          Notifications {% if company_unread_count %}<span class="badge bg-danger ms-2">{{ company_unread_count }}</span>{% endif %}
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <!-- Overview Tab -->
+      <div class="tab-pane fade show active" id="overview">
+        <!-- Awaiting Selection -->
+        <div class="mb-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Tasks Awaiting Selection</h5>
+            <span class="badge bg-primary px-3 py-2">{{ tasks_awaiting_selection|length if tasks_awaiting_selection else 0 }}</span>
+          </div>
+          {% if tasks_awaiting_selection and tasks_awaiting_selection|length > 0 %}
+            {% for task in tasks_awaiting_selection %}
+              <div class="card border-0 shadow-sm mb-3 p-4" style="border-radius: 12px;">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <div class="flex-grow-1">
+                    <h6 class="fw-bold mb-1"><a href="{{ url_for('task_detail', task_id=task.id) }}" class="text-decoration-none text-dark">{{ task.title }}</a></h6>
+                    <p class="text-muted small mb-1">{{ task.created_at.strftime("%B %d, %Y") if task.created_at else "" }}</p>
+                    <span class="badge bg-warning text-dark small">Awaiting Selection</span>
+                  </div>
+                  <span class="badge bg-primary px-2 py-1 ms-2">{{ task.applications|length }} applicants</span>
+                </div>
+                <p class="text-muted small mb-3">{{ task.requirements or task.description or "" }}</p>
+                <div class="d-flex gap-2">
+                  <a href="{{ url_for('company_applicants', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">View Applicants</a>
+                  <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit</a>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="alert alert-light border p-4" style="border-radius: 12px;">
+              <p class="text-muted small mb-0">No tasks awaiting selection</p>
+            </div>
+          {% endif %}
+        </div>
+
+        <!-- Active Tasks -->
+        <div class="mb-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Active Tasks</h5>
+            <span class="badge bg-primary px-3 py-2">{{ tasks_active|length if tasks_active else 0 }}</span>
+          </div>
+          {% if tasks_active and tasks_active|length > 0 %}
+            {% for task in tasks_active %}
+              <div class="card border-0 shadow-sm mb-3 p-4" style="border-radius: 12px;">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <div class="flex-grow-1">
+                    <h6 class="fw-bold mb-1"><a href="{{ url_for('task_detail', task_id=task.id) }}" class="text-decoration-none text-dark">{{ task.title }}</a></h6>
+                    <p class="text-muted small mb-1">{{ task.created_at.strftime("%B %d, %Y") if task.created_at else "" }}</p>
+                    <span class="badge bg-success text-white small">In Progress</span>
+                  </div>
+                  <span class="badge bg-primary px-2 py-1 ms-2">{{ task.applications|length }} applicants</span>
+                </div>
+                <p class="text-muted small mb-3">{{ task.requirements or task.description or "" }}</p>
+                {% set has_submission = (task.applications | selectattr('student_file') | list | length) > 0 %}
+                <div class="d-flex gap-2">
+                  <a href="{{ url_for('company_applicants', task_id=task.id) }}" class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
+                    {{ 'View Submission' if has_submission else 'View Applicants' }}
+                  </a>
+                  <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit</a>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="alert alert-light border p-4" style="border-radius: 12px;">
+              <p class="text-muted small mb-0">No active tasks</p>
+            </div>
+          {% endif %}
+        </div>
+
+        <!-- Past Tasks -->
+        <div>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Past Tasks</h5>
+            <span class="badge bg-primary px-3 py-2">{{ tasks_past|length if tasks_past else 0 }}</span>
+          </div>
+          {% if tasks_past and tasks_past|length > 0 %}
+            {% for task in tasks_past %}
+              <div class="card border-0 shadow-sm mb-3 p-4" style="border-radius: 12px;">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <div class="flex-grow-1">
+                    <h6 class="fw-bold mb-1"><a href="{{ url_for('task_detail', task_id=task.id) }}" class="text-decoration-none text-dark">{{ task.title }}</a></h6>
+                    <p class="text-muted small mb-1">{{ task.created_at.strftime("%B %d, %Y") if task.created_at else "" }}</p>
+                    <span class="badge bg-secondary text-white small">Completed</span>
+                  </div>
+                  <span class="badge bg-primary px-2 py-1 ms-2">{{ task.applications|length }} applicants</span>
+                </div>
+                <p class="text-muted small mb-3">{{ task.requirements or task.description or "" }}</p>
+                {% set has_submission = (task.applications | selectattr('student_file') | list | length) > 0 %}
+                <div class="d-flex gap-2">
+                  <a href="{{ url_for('company_applicants', task_id=task.id) }}" class="btn btn-{{ 'primary' if has_submission else 'outline-secondary' }} btn-sm">
+                    {{ 'View Submission' if has_submission else 'View Applicants' }}
+                  </a>
+                  <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-warning btn-sm">Edit</a>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="alert alert-light border p-4" style="border-radius: 12px;">
+              <p class="text-muted small mb-0">No past tasks</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Notifications Tab -->
+      <div class="tab-pane fade" id="notifications">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold text-dark mb-0">Recent Notifications</h6>
+          <form method="post" action="{{ url_for('mark_notification_read', notif_id=0) }}" class="d-inline">
+            <input type="hidden" name="next" value="{{ url_for('company_dashboard') }}#notifications">
+            <button class="btn btn-sm btn-outline-secondary" {% if not company_unread_count %}disabled{% endif %}>Mark all read</button>
+          </form>
+        </div>
+
+        {% set unread = company_unread if company_unread is defined else [] %}
+        {% set read = company_read if company_read is defined else [] %}
+
+        {% if unread %}
+          <h6 class="fw-bold text-dark mb-2 small">UNREAD</h6>
+          <div class="list-group mb-3">
+            {% for n in unread %}
+              <div class="list-group-item bg-light p-3 mb-2 rounded-2 border-0">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div class="flex-grow-1">
+                    <h6 class="fw-bold text-dark mb-1 small">{{ n.message }}</h6>
+                    <p class="text-muted small mb-0">{{ n.created_at.strftime('%B %d, %Y') if n.created_at else 'Just now' }}</p>
+                  </div>
+                  <form method="post" action="{{ url_for('mark_notification_read', notif_id=n.id) }}" class="ms-2">
+                    <input type="hidden" name="next" value="{{ url_for('company_dashboard') }}#notifications">
+                    <button type="submit" class="btn btn-sm btn-primary px-3 py-1">Mark read</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if read %}
+          <h6 class="fw-bold text-dark mb-2 small">READ</h6>
+          <div class="list-group">
+            {% for n in read %}
+              <div class="list-group-item p-3 mb-2 rounded-2 border">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div class="flex-grow-1">
+                    <h6 class="fw-bold text-dark mb-1 small">{{ n.message }}</h6>
+                    <p class="text-muted small mb-0">{{ n.created_at.strftime('%B %d, %Y') if n.created_at else 'Just now' }}</p>
+                  </div>
+                  <span class="badge bg-secondary text-white ms-2">Read</span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif not unread %}
+          <div class="alert alert-light border p-4" style="border-radius: 12px;">
+            <p class="text-muted small mb-0">No notifications</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .card:hover {
+    transform: translateY(-3px);
+    transition: all 0.3s ease;
+  }
+</style>
+
+<script>
+(function() {
+  const hash = window.location.hash;
+  if (hash) {
+    const btn = document.querySelector(`button[data-bs-target='${hash}']`);
+    if (btn) new bootstrap.Tab(btn).show();
+  }
+})();
+</script>
+{% endblock %}

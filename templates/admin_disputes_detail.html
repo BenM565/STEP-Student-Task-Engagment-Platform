@@ -1,6 +1,10 @@
-<!--code layout is from chatgpt-->
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
 
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
 {% block content %}
 
@@ -10,6 +14,11 @@
   <div class="card mb-3 shadow-sm">
     <div class="card-body">
       <p class="mb-1"><strong>Status:</strong> {{ d.status|upper }}</p>
+      <p class="mb-1"><strong>Severity (AI):</strong>
+        <span class="badge {% if d.severity >= 5 %}bg-danger{% elif d.severity >= 3 %}bg-warning{% else %}bg-secondary{% endif %}">
+          {{ d.severity }}
+        </span>
+      </p>
       <p class="mb-1"><strong>Raised by user id:</strong> {{ d.raised_by_user_id }}</p>
       {% if d.against_user_id %}
         <p class="mb-1"><strong>Against user id:</strong> {{ d.against_user_id }}</p>
@@ -18,6 +27,13 @@
         <p class="mb-1"><strong>Related task id:</strong> {{ d.task_id }}</p>
       {% endif %}
       <p class="mb-3"><strong>Message:</strong><br>{{ d.message }}</p>
+
+      {% if d.ai_suggested_resolution %}
+        <div class="alert alert-info">
+          <div class="fw-semibold mb-1">AI Suggested Resolution</div>
+          <div>{{ d.ai_suggested_resolution }}</div>
+        </div>
+      {% endif %}
 
       {% if d.resolution_note %}
         <p class="mb-1"><strong>Resolution note:</strong><br>{{ d.resolution_note }}</p>
@@ -31,12 +47,18 @@
       <textarea name="resolution_note" class="form-control" rows="3"></textarea>
     </div>
 
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2">
+      <button name="action" value="apply_suggestion" class="btn btn-outline-primary" {% if not d.ai_suggested_resolution %}disabled{% endif %}>
+        Apply AI suggestion
+      </button>
       <button name="action" value="in_review" class="btn btn-outline-secondary">
         Mark in review
       </button>
       <button name="action" value="resolve" class="btn btn-success">
         Resolve dispute
+      </button>
+      <button name="action" value="resolve_with_suggestion" class="btn btn-success" {% if not d.ai_suggested_resolution %}disabled{% endif %}>
+        Resolve with AI suggestion
       </button>
       <a href="{{ url_for('admin_disputes') }}" class="btn btn-outline-secondary ms-auto">
         Back to disputes

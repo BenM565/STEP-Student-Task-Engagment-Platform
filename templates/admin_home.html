@@ -1,15 +1,98 @@
-<!--code layout is from chatgpt-->
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
 
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
 {% block content %}
 {# admin dashboard showing unverified students and open disputes #}
 
 <h5 class="mb-3">Admin dashboard</h5>
 
-<a href="/company/task/{{ task.id }}/applicants">
-  View applicants
-</a>
+<!-- Quick Stats: clickable boxes -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-4">
+    <a href="{{ url_for('admin_users') }}" class="text-decoration-none">
+      <div class="card shadow-sm h-100 hover-shadow">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small">Total Students</div>
+            <div class="h4 mb-0">{{ total_students or 0 }}</div>
+          </div>
+          <i class="bi bi-people fs-2 text-primary"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4">
+    <a href="{{ url_for('admin_users') }}" class="text-decoration-none">
+      <div class="card shadow-sm h-100 hover-shadow">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small">Verified Students</div>
+            <div class="h4 mb-0">{{ verified_students or 0 }}</div>
+          </div>
+          <i class="bi bi-patch-check fs-2 text-success"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4">
+    <a href="{{ url_for('admin_users') }}" class="text-decoration-none">
+      <div class="card shadow-sm h-100 hover-shadow">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small">Unverified Students</div>
+            <div class="h4 mb-0">{{ unverified_students or 0 }}</div>
+          </div>
+          <i class="bi bi-person-exclamation fs-2 text-warning"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-6 col-md-4">
+    <a href="{{ url_for('admin_disputes') }}" class="text-decoration-none">
+      <div class="card shadow-sm h-100 hover-shadow">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small">Total Disputes</div>
+            <div class="h4 mb-0">{{ total_disputes or 0 }}</div>
+          </div>
+          <i class="bi bi-journal-text fs-2 text-secondary"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4">
+    <a href="{{ url_for('admin_disputes') }}" class="text-decoration-none">
+      <div class="card shadow-sm h-100 hover-shadow">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small">Open Disputes</div>
+            <div class="h4 mb-0">{{ open_disputes_count or 0 }}</div>
+          </div>
+          <i class="bi bi-exclamation-triangle fs-2 text-danger"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4">
+    <a href="{{ url_for('admin_disputes') }}" class="text-decoration-none">
+      <div class="card shadow-sm h-100 hover-shadow">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small">Resolved Disputes</div>
+            <div class="h4 mb-0">{{ resolved_disputes_count or 0 }}</div>
+          </div>
+          <i class="bi bi-check2-circle fs-2 text-success"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
 
 <div class="row g-3">
   <div class="col-md-6">

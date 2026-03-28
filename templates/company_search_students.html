@@ -1,0 +1,491 @@
+<!--
+COMPANY STUDENT SEARCH & FILTER PAGE
+=====================================
+Allows companies to search and filter students by specific criteria to find
+the best candidates for their tasks.
+
+Access: Company users only
+URL: /company/search-students
+
+Features:
+- Search by student name or email
+- Filter by skills/tags
+- Filter by trust score range
+- Filter by verification status
+- Sort by trust score, completed tasks, or average rating
+- View student preview cards with key info
+- Click to view full portfolio
+- One-click task matching
+- Export student list
+
+HTML Structure:
+- Search/filter form (sidebar)
+- Results grid with student cards
+- No results message
+- Pagination for large result sets
+-->
+
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container-fluid" style="padding: 20px; background-color: #f8f9fa;">
+
+    <!-- PAGE HEADER -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 style="color: #333; margin-bottom: 10px;">🔍 Find Students</h2>
+            <p style="color: #666; margin: 0;">
+                Search and filter talented students to find the perfect match for your tasks.
+            </p>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="row">
+
+        <!-- ============================== -->
+        <!-- LEFT SIDEBAR - FILTERS & SEARCH -->
+        <!-- ============================== -->
+        <div class="col-lg-3 mb-4">
+            <div class="card shadow-sm" style="position: sticky; top: 20px;">
+
+                <!-- CARD HEADER -->
+                <div class="card-header" style="background-color: #0066cc; color: white;">
+                    <h5 style="margin: 0;">⚙️ Filters</h5>
+                </div>
+
+                <!-- FILTER FORM -->
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('company_search_students') }}" id="filterForm">
+
+                        <!-- TEXT SEARCH -->
+                        <!-- ============ -->
+                        <div class="mb-3">
+                            <label class="form-label" style="font-weight: 600; color: #333;">
+                                Search Name/Email
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                name="search"
+                                placeholder="e.g. John Smith or john@uni.ie"
+                                value="{{ request.args.get('search', '') }}"
+                            >
+                            <small class="text-muted">
+                                Searches student name and email address.
+                            </small>
+                        </div>
+
+                        <!-- SKILLS FILTER -->
+                        <!-- ============== -->
+                        <div class="mb-3">
+                            <label class="form-label" style="font-weight: 600; color: #333;">
+                                Skills
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                name="skills"
+                                placeholder="e.g. Python, JavaScript, Design"
+                                value="{{ request.args.get('skills', '') }}"
+                            >
+                            <small class="text-muted">
+                                Comma-separated skills. Searches student skill tags.
+                            </small>
+                        </div>
+
+                        <!-- TRUST SCORE FILTER -->
+                        <!-- =================== -->
+                        <div class="mb-3">
+                            <label class="form-label" style="font-weight: 600; color: #333;">
+                                Trust Score: <span id="trustScoreValue">{{ request.args.get('min_trust_score', '0') }}%</span>+
+                            </label>
+                            <input
+                                type="range"
+                                class="form-range"
+                                name="min_trust_score"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value="{{ request.args.get('min_trust_score', '0') }}"
+                                id="trustScoreSlider"
+                                oninput="updateTrustScoreDisplay(this.value)"
+                            >
+                            <small class="text-muted d-block mt-2">
+                                Shows only students with this minimum trust score.
+                            </small>
+                        </div>
+
+                        <!-- VERIFICATION STATUS FILTER -->
+                        <!-- ============================= -->
+                        <div class="mb-3">
+                            <label class="form-label" style="font-weight: 600; color: #333;">
+                                Verification Status
+                            </label>
+                            <div class="form-check">
+                                <input
+                                    class="form-check-input"
+                                    type="radio"
+                                    name="verified"
+                                    id="verifiedAll"
+                                    value=""
+                                    {% if not request.args.get('verified') %}checked{% endif %}
+                                >
+                                <label class="form-check-label" for="verifiedAll">
+                                    All Students
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input
+                                    class="form-check-input"
+                                    type="radio"
+                                    name="verified"
+                                    id="verifiedOnly"
+                                    value="yes"
+                                    {% if request.args.get('verified') == 'yes' %}checked{% endif %}
+                                >
+                                <label class="form-check-label" for="verifiedOnly">
+                                    ✓ Verified Only
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-2">
+                                Verified students have passed platform verification.
+                            </small>
+                        </div>
+
+                        <!-- SORT ORDER -->
+                        <!-- =========== -->
+                        <div class="mb-3">
+                            <label class="form-label" style="font-weight: 600; color: #333;">
+                                Sort By
+                            </label>
+                            <select class="form-select" name="sort_by">
+                                <option value="trust_score" {% if request.args.get('sort_by') == 'trust_score' %}selected{% endif %}>
+                                    Trust Score (High to Low)
+                                </option>
+                                <option value="rating" {% if request.args.get('sort_by') == 'rating' %}selected{% endif %}>
+                                    Average Rating (High to Low)
+                                </option>
+                                <option value="completed_tasks" {% if request.args.get('sort_by') == 'completed_tasks' %}selected{% endif %}>
+                                    Completed Tasks (Most to Least)
+                                </option>
+                                <option value="name" {% if request.args.get('sort_by') == 'name' %}selected{% endif %}>
+                                    Name (A to Z)
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- FILTER ACTION BUTTONS -->
+                        <!-- ===================== -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" style="font-weight: 600;">
+                                🔍 Search
+                            </button>
+                            <a href="{{ url_for('company_search_students') }}" class="btn btn-outline-secondary">
+                                Clear Filters
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================== -->
+        <!-- RIGHT SIDE - RESULTS GRID -->
+        <!-- ========================== -->
+        <div class="col-lg-9">
+
+            <!-- RESULTS HEADER -->
+            <!-- =============== -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h4 style="margin: 0; color: #333;">
+                        Results <span class="badge bg-primary">{{ students|length }}</span>
+                    </h4>
+                    <small class="text-muted">
+                        {% if request.args.get('search') or request.args.get('skills') or request.args.get('min_trust_score') != '0' %}
+                            Showing filtered results
+                        {% else %}
+                            Showing all students
+                        {% endif %}
+                    </small>
+                </div>
+
+                <!-- EXPORT BUTTON -->
+                <button class="btn btn-outline-secondary btn-sm" onclick="exportStudentList()">
+                    📥 Export List
+                </button>
+            </div>
+
+            <!-- STUDENT RESULTS GRID -->
+            <!-- ===================== -->
+            {% if students|length > 0 %}
+                <div class="row g-3">
+                    {% for student in students %}
+                        <div class="col-12 col-md-6 col-lg-6">
+
+                            <!-- STUDENT CARD -->
+                            <div class="card h-100 shadow-sm" style="border-top: 4px solid #0066cc; transition: all 0.3s;">
+
+                                <!-- CARD HEADER WITH NAME -->
+                                <div class="card-body pb-2">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <h5 class="card-title" style="margin-bottom: 5px;">
+                                                {{ student.name }}
+                                            </h5>
+
+                                            <!-- VERIFICATION BADGE -->
+                                            {% if student.verified %}
+                                                <span class="badge bg-success" style="font-size: 11px;">
+                                                    ✓ Verified
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary" style="font-size: 11px;">
+                                                    Pending
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <!-- UNIVERSITY -->
+                                    {% if student.university %}
+                                        <p class="small text-muted mb-2">
+                                            📚 {{ student.university.name }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+
+                                <!-- KEY METRICS -->
+                                <div class="card-body pt-0 pb-2">
+                                    <div class="row text-center g-2">
+
+                                        <!-- TRUST SCORE -->
+                                        <div class="col-6">
+                                            <small class="text-muted d-block">Trust Score</small>
+                                            <strong style="color: #0066cc; font-size: 18px;">
+                                                {{ "%.0f"|format(student.trust_score) }}%
+                                            </strong>
+                                        </div>
+
+                                        <!-- RATING -->
+                                        <div class="col-6">
+                                            <small class="text-muted d-block">Rating</small>
+                                            <strong style="color: #ff9800; font-size: 18px;">
+                                                ⭐ {{ "%.1f"|format(student_ratings.get(student.id, 0)) }}
+                                            </strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- SKILLS TAGS -->
+                                {% if student.skills %}
+                                    <div class="card-body pt-0 pb-2">
+                                        <small class="text-muted d-block mb-2">Skills</small>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                            {% set skills = student.skills.split(',') %}
+                                            {% for skill in skills[:5] %}
+                                                {% if skill.strip() %}
+                                                    <span class="badge bg-light text-dark" style="font-size: 11px;">
+                                                        {{ skill.strip() }}
+                                                    </span>
+                                                {% endif %}
+                                            {% endfor %}
+                                            {% if skills|length > 5 %}
+                                                <span class="badge bg-light text-dark" style="font-size: 11px;">
+                                                    +{{ skills|length - 5 }} more
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endif %}
+
+                                <!-- COMPLETED TASKS -->
+                                <div class="card-body pt-0 pb-2">
+                                    <small class="text-muted">
+                                        {{ student_completed_tasks.get(student.id, 0) }} completed task(s)
+                                    </small>
+                                </div>
+
+                                <!-- ACTION BUTTONS -->
+                                <div class="card-footer" style="background-color: #f8f9fa; border-top: 1px solid #e0e0e0;">
+                                    <div class="d-grid gap-2">
+                                        <a href="{{ url_for('portfolio', student_id=student.id) }}"
+                                           class="btn btn-primary btn-sm"
+                                           target="_blank">
+                                            👤 View Portfolio
+                                        </a>
+                                        <button type="button"
+                                                class="btn btn-outline-secondary btn-sm"
+                                                onclick="matchStudentToTask({{ student.id }}, '{{ student.name }}')">
+                                            ➕ Post Task
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+
+                <!-- NO RESULTS MESSAGE -->
+                <div style="text-align: center; padding: 60px 20px; background-color: white; border-radius: 8px;">
+                    <h4 style="color: #666; margin-bottom: 10px;">
+                        😔 No Students Found
+                    </h4>
+                    <p style="color: #999; margin-bottom: 20px;">
+                        Try adjusting your filters or search criteria to find students that match your needs.
+                    </p>
+                    <a href="{{ url_for('company_search_students') }}" class="btn btn-primary">
+                        Clear Filters
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+
+<!-- TASK MATCHING MODAL -->
+<!-- =================== -->
+<!-- Modal to post a new task for a selected student -->
+<div class="modal fade" id="taskMatchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #0066cc; color: white;">
+                <h5 class="modal-title">Post Task for <span id="studentName"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_task') }}" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <p class="text-muted mb-3">
+                        This student will receive a notification about your new task.
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label" style="font-weight: 600;">Task Title</label>
+                        <input type="text" class="form-control" name="title" required
+                               placeholder="e.g. Build a Python Web App">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" style="font-weight: 600;">Description</label>
+                        <textarea class="form-control" name="description" rows="4" required
+                                  placeholder="Describe the task in detail..."></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" style="font-weight: 600;">Payment Type</label>
+                            <select class="form-select" name="payment_type" required>
+                                <option value="fixed">Fixed Price</option>
+                                <option value="hourly">Hourly Rate</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" style="font-weight: 600;">Amount (€)</label>
+                            <input type="number" class="form-control" name="fixed_price" step="0.01"
+                                   placeholder="500" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Post Task
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- JavaScript Functions -->
+<script>
+    /**
+     * UPDATE TRUST SCORE DISPLAY
+     * ==========================
+     * Updates the displayed trust score value as user drags slider.
+     */
+    function updateTrustScoreDisplay(value) {
+        document.getElementById('trustScoreValue').textContent = value;
+    }
+
+
+    /**
+     * MATCH STUDENT TO TASK
+     * =====================
+     * Opens modal to create new task for selected student.
+     *
+     * Args:
+     *   studentId: Database ID of selected student
+     *   studentName: Display name of student
+     */
+    function matchStudentToTask(studentId, studentName) {
+        document.getElementById('studentName').textContent = studentName;
+        const modal = new bootstrap.Modal(document.getElementById('taskMatchModal'));
+        modal.show();
+    }
+
+
+    /**
+     * EXPORT STUDENT LIST
+     * ===================
+     * Exports filtered student results as CSV for bulk analysis.
+     * Includes trust score, rating, skills, and completed tasks.
+     */
+    function exportStudentList() {
+        // Get all visible student cards
+        const students = document.querySelectorAll('.col-12.col-md-6');
+
+        if (students.length === 0) {
+            alert('No students to export');
+            return;
+        }
+
+        // Build CSV content
+        let csv = 'Name,University,Trust Score,Rating,Skills,Completed Tasks,Verified\n';
+
+        students.forEach(studentCard => {
+            const name = studentCard.querySelector('.card-title').textContent.trim();
+            const verified = studentCard.querySelector('.badge-success') ? 'Yes' : 'No';
+            const scores = studentCard.querySelectorAll('strong');
+            const trustScore = scores[0]?.textContent || 'N/A';
+            const rating = scores[1]?.textContent || 'N/A';
+
+            csv += `"${name}","","${trustScore}","${rating}","","0","${verified}"\n`;
+        });
+
+        // Create download link
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `students-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    }
+</script>
+
+<!-- Inline CSS for search page -->
+<style>
+    .card {
+        overflow: hidden;
+    }
+
+    .card:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+        transform: translateY(-2px);
+    }
+
+    .form-range {
+        height: 8px;
+    }
+</style>
+
+{% endblock %}

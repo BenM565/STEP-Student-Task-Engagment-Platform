@@ -1,39 +1,122 @@
-<!--code layout is from chatgpt-->
-<!--inside is customised with my own code-->
+<!--
+Initial layout structure and component scaffolding informed by AI-assisted tooling
+(ChatGPT, OpenAI), following standard HTML and accessibility best practices.
+
+Markup, content, and final structure were reviewed, adapted, and implemented
+independently for the STEP Student Task Engagement Platform.
+-->
 {% extends "base.html" %}
+{% block page_title %}Post a New Task{% endblock %}
 {% block content %}
-
-
-{# Form for company users to create a new task#}
-
-{# Posts to /tasks/new handled by add_task route #}
-
-
 <div class="row justify-content-center">
-  <div class="col-lg-7">
-    <div class="card shadow-sm">
+  <div class="col-lg-8">
+    <div class="card card-compact shadow-sm">
       <div class="card-body p-4">
-        <h5 class="mb-3">Create a new task</h5>
-        <form method="post">
-          <div class="mb-3">
-            <label class="form-label">Title</label>
-            <input name="title" required class="form-control" placeholder="e.g., Build login page with Bootstrap">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Requirements</label>
-            <textarea name="requirements" rows="4" class="form-control" placeholder="Skills required, deliverables, acceptance criteria"></textarea>
-          </div>
-          <div class="mb-3">
+<div class="mb-3">
+          <div class="title">Create a new task</div>
+          <div class="subtitle">Share details, attach an optional spec/media, and set expected hours.</div>
+        </div>
+
+        <form method="POST" action="{{ url_for('add_task') }}" enctype="multipart/form-data">
+          <div class="mb-2">
+  <label class="form-label">Title</label>
+  <input name="title" required class="form-control" placeholder="e.g., Build login page with Bootstrap">
+</div>
+
+<div class="mb-2">
+  <label class="form-label">Description</label>
+  <textarea name="description" rows="4" required class="form-control" placeholder="Describe the task in detail..."></textarea>
+</div>
+
+<div class="mb-2">
+  <label class="form-label">Requirements</label>
+  <textarea name="requirements" rows="5" class="form-control" placeholder="Skills required, deliverables, and acceptance criteria"></textarea>
+</div>
+
+
+          <!-- Estimated hours -->
+          <div class="mb-2">
             <label class="form-label">Estimated hours</label>
-            <input name="estimated_hours" type="number" min="1" class="form-control" placeholder="e.g., 12">
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-clock"></i></span>
+              <input name="estimated_hours" type="number" min="1" class="form-control" placeholder="e.g., 12">
+            </div>
+            <div class="form-text">A rough estimate is okay — students can use this to plan.</div>
           </div>
+<div class="mb-3">
+    <label class="form-label">Payment Type</label>
+    <select name="payment_type" id="payment_type" class="form-select" onchange="togglePaymentFields()">
+        <option value="fixed">Fixed Price Task</option>
+        <option value="hourly">Hourly Task</option>
+    </select>
+</div>
+
+<div class="mb-3" id="fixed_price_group">
+    <label class="form-label">Fixed Price (€)</label>
+    <input type="number" step="0.01" name="fixed_price" class="form-control" placeholder="e.g. 500">
+</div>
+
+<div class="mb-3" id="hourly_rate_group" style="display:none;">
+    <label class="form-label">Hourly Rate (€ per hour)</label>
+    <input type="number" step="0.01" name="hourly_rate" class="form-control" placeholder="e.g. 25">
+</div>
+
+<script>
+function togglePaymentFields() {
+    const type = document.getElementById("payment_type").value;
+    document.getElementById("fixed_price_group").style.display =
+        type === "fixed" ? "block" : "none";
+    document.getElementById("hourly_rate_group").style.display =
+        type === "hourly" ? "block" : "none";
+}
+</script>
+
+          <!-- Media upload -->
+          <div class="mb-3">
+            <label class="form-label">Attach media (optional)</label>
+            <label class="dropzone w-100" for="media">
+              <div class="dz-icon"><i class="bi bi-cloud-arrow-up-fill"></i></div>
+              <div class="dz-text">
+                <div class="dz-title">Drag & drop file here, or click to browse</div>
+                <div class="dz-sub text-muted">Accepted: images, PDFs, docs, videos</div>
+              </div>
+              <input id="media" name="media" type="file" class="dz-input" accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.mp4,.mov,.avi">
+            </label>
+            <div id="dz-file-name" class="small text-muted mt-1" style="display:none;"></div>
+          </div>
+
           <div class="d-flex gap-2">
-            <button class="btn btn-primary">Create Task</button>
-            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+            <button class="btn btn-primary"><i class="bi bi-send me-1"></i>Create Task</button>
+            <a href="{{ url_for('company_dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
           </div>
         </form>
       </div>
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  const input = document.getElementById('media');
+  const label = document.querySelector('.dropzone');
+  const nameBox = document.getElementById('dz-file-name');
+  if (input && label) {
+    label.addEventListener('dragover', (e) => { e.preventDefault(); label.classList.add('is-dragover'); });
+    label.addEventListener('dragleave', () => { label.classList.remove('is-dragover'); });
+    label.addEventListener('drop', () => { label.classList.remove('is-dragover'); });
+  }
+  if (input && nameBox) {
+    input.addEventListener('change', () => {
+      const f = input.files && input.files[0];
+      if (f) {
+        nameBox.style.display = '';
+        nameBox.textContent = 'Selected: ' + f.name;
+      } else {
+        nameBox.style.display = 'none';
+        nameBox.textContent = '';
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}

@@ -1,0 +1,189 @@
+<!--
+STUDENT EDIT PROFILE PAGE
+==========================
+Dedicated page for students to edit their profile information.
+Separate from the portfolio builder - focuses on personal details.
+
+Features:
+- Edit name, email, password
+- Edit university, grades, projects
+- Profile picture upload (optional)
+- Account security settings
+
+Access: Logged-in students only
+URL: /edit-profile
+-->
+
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-5 mb-5">
+  <!-- PAGE HEADER -->
+  <div class="row mb-5">
+    <div class="col-12">
+      <h1 class="mb-3">👤 Edit Your Profile</h1>
+      <p class="text-muted">Update your personal information and account settings</p>
+    </div>
+  </div>
+
+  <!-- MAIN FORM -->
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Profile Information</h5>
+        </div>
+        <div class="card-body">
+
+          <!-- BASIC INFORMATION -->
+          <form method="POST" action="{{ url_for('edit_profile') }}" enctype="multipart/form-data">
+            <div class="mb-4">
+              <h6 class="mb-3">Basic Information</h6>
+
+              <div class="mb-3">
+                <label class="form-label">Full Name</label>
+                <input type="text" class="form-control" name="name" value="{{ current_user.name }}" required>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Email Address</label>
+                <input type="email" class="form-control" name="email" value="{{ current_user.email }}" required>
+                <small class="form-text text-muted">Your email is used to log in</small>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">University</label>
+                <input type="text" class="form-control" name="university" placeholder="e.g., University College Dublin" value="{{ current_user.university or '' }}">
+              </div>
+            </div>
+
+            <hr>
+
+            <!-- ACADEMIC INFORMATION -->
+            <div class="mb-4">
+              <h6 class="mb-3">Academic Information</h6>
+
+              <div class="mb-3">
+                <label class="form-label">Grades/GPA</label>
+                <input type="text" class="form-control" name="grades" placeholder="e.g., 3.8 GPA, First Class Honours" value="{{ current_user.grades or '' }}">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Projects/Experience</label>
+                <textarea class="form-control" name="projects" rows="3" placeholder="Describe your key projects and experience">{{ current_user.projects or '' }}</textarea>
+              </div>
+            </div>
+
+            <hr>
+
+            <!-- ACCOUNT SECURITY -->
+            <div class="mb-4">
+              <h6 class="mb-3">Change Password</h6>
+
+              <div class="mb-3">
+                <label class="form-label">Current Password</label>
+                <input type="password" class="form-control" name="current_password" placeholder="Leave blank if not changing password">
+                <small class="form-text text-muted">Required to change password</small>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">New Password</label>
+                <input type="password" class="form-control" name="new_password" placeholder="Leave blank to keep current password">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Confirm New Password</label>
+                <input type="password" class="form-control" name="confirm_password" placeholder="Confirm new password">
+              </div>
+            </div>
+
+            <hr>
+
+            <!-- BUTTONS -->
+            <div class="d-flex justify-content-between">
+              <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+              </a>
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check-circle"></i> Save Changes
+              </button>
+            </div>
+          </form>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR - QUICK LINKS -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+          <h5 class="mb-0"><i class="bi bi-link-45deg"></i> Quick Actions</h5>
+        </div>
+        <div class="card-body">
+          <div class="d-grid gap-2">
+            <a href="{{ url_for('edit_portfolio') }}" class="btn btn-outline-primary">
+              <i class="bi bi-briefcase"></i> Build Portfolio
+            </a>
+            <a href="{{ url_for('portfolio', student_id=current_user.id) }}" class="btn btn-outline-primary" target="_blank">
+              <i class="bi bi-eye"></i> View My Portfolio
+            </a>
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-primary">
+              <i class="bi bi-speedometer2"></i> Go to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACCOUNT INFO CARD -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-info text-white">
+          <h5 class="mb-0"><i class="bi bi-info-circle"></i> Account Info</h5>
+        </div>
+        <div class="card-body">
+          <p><strong>Member Since:</strong></p>
+          <p class="text-muted">Account created</p>
+
+          <hr>
+
+          <p><strong>Account Status:</strong></p>
+          {% if current_user.verified %}
+            <span class="badge bg-success"><i class="bi bi-check-circle"></i> Verified</span>
+          {% else %}
+            <span class="badge bg-warning"><i class="bi bi-exclamation-circle"></i> Pending Verification</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- STYLES -->
+<style>
+  .form-label {
+    font-weight: 600;
+    color: #333;
+  }
+
+  .card {
+    border: none;
+    border-radius: 8px;
+  }
+
+  .card-header {
+    border-radius: 8px 8px 0 0;
+  }
+
+  hr {
+    margin: 2rem 0;
+    border: none;
+    border-top: 1px solid #e0e0e0;
+  }
+
+  .btn {
+    border-radius: 6px;
+  }
+</style>
+
+{% endblock %}

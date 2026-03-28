@@ -1,0 +1,432 @@
+<!--
+STUDENT PUBLIC PORTFOLIO PAGE
+=============================
+Displays student's public profile with portfolio of completed work.
+Companies can discover students and view evidence of their capabilities.
+
+Access: Public (no login required)
+URL: /portfolio/<student_id>
+
+Features:
+- Student profile overview (name, university, headline)
+- Skills display with visual tags
+- Portfolio of completed projects with descriptions and links
+- Project media (images, documents, links)
+- Lecturer references for credibility
+- Trust score and verification badge
+- Ratings and reviews from completed tasks
+- Call-to-action for companies to post tasks or contact student
+- Share portfolio link
+
+HTML Structure:
+- Header with student name and verification badge
+- Key metrics (trust score, completed tasks, average rating)
+- Skills section with visual tags
+- Portfolio projects grid
+- Lecturer references list
+- Reviews section
+- Call-to-action buttons
+-->
+
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container-fluid portfolio-container" style="padding: 20px; background-color: #f8f9fa;">
+
+    <!-- PORTFOLIO HEADER -->
+    <!-- ================= -->
+    <!-- Displays student name, university, verification status, and key metrics -->
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" style="border-left: 5px solid #0066cc;">
+
+                <div class="card-body">
+                    <!-- Student name with verification badge -->
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h1 style="margin-bottom: 10px; color: #333;">{{ student.name }}</h1>
+
+                            <!-- Verification badge - shows green checkmark if verified -->
+                            {% if student.verified %}
+                                <span class="badge bg-success" style="font-size: 12px; padding: 6px 10px;">
+                                    ✓ Verified Student
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary" style="font-size: 12px; padding: 6px 10px;">
+                                    Pending Verification
+                                </span>
+                            {% endif %}
+
+                            <!-- University affiliation if available -->
+                            {% if student.university %}
+                                <p style="color: #666; margin-top: 8px; font-size: 14px;">
+                                    📚 {{ student.university.name }}
+                                </p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Copy portfolio link button -->
+                        <button class="btn btn-outline-secondary btn-sm" onclick="copyPortfolioLink()"
+                                style="cursor: pointer;" title="Copy shareable link">
+                            📋 Share
+                        </button>
+                    </div>
+
+                    <!-- KEY METRICS - Trust score, completed tasks, average rating -->
+                    <div class="row mt-4 text-center">
+
+                        <!-- Trust Score Box -->
+                        <div class="col-md-4">
+                            <div style="background-color: #f0f0f0; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 28px; font-weight: bold; color: #0066cc;">
+                                    {{ "%.1f"|format(student.trust_score) }}%
+                                </div>
+                                <small style="color: #666;">Trust Score</small>
+                            </div>
+                        </div>
+
+                        <!-- Completed Tasks Box -->
+                        <div class="col-md-4">
+                            <div style="background-color: #f0f0f0; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 28px; font-weight: bold; color: #28a745;">
+                                    {{ completed_tasks_count }}
+                                </div>
+                                <small style="color: #666;">Completed Tasks</small>
+                            </div>
+                        </div>
+
+                        <!-- Average Rating Box -->
+                        <div class="col-md-4">
+                            <div style="background-color: #f0f0f0; padding: 15px; border-radius: 8px;">
+                                <div style="font-size: 28px; font-weight: bold; color: #ff9800;">
+                                    {{ "%.1f"|format(average_rating) }}/5.0
+                                </div>
+                                <small style="color: #666;">Average Rating</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- SKILLS SECTION -->
+    <!-- =============== -->
+    <!-- Visual display of student's skills as tags -->
+
+    {% if student.skills %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #0066cc; color: white;">
+                    <h5 style="margin: 0;">🛠️ Skills</h5>
+                </div>
+                <div class="card-body">
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <!-- Parse skills as comma-separated list and display as tags -->
+                        {% set skills = student.skills.split(',') %}
+                        {% for skill in skills %}
+                            {% if skill.strip() %}
+                                <span class="badge bg-primary" style="font-size: 13px; padding: 8px 12px;">
+                                    {{ skill.strip() }}
+                                </span>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- GRADES/CREDENTIALS SECTION -->
+    <!-- =========================== -->
+    <!-- Display grades or academic credentials if available -->
+
+    {% if student.grades %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #0066cc; color: white;">
+                    <h5 style="margin: 0;">📋 Credentials</h5>
+                </div>
+                <div class="card-body">
+                    <p style="color: #555; white-space: pre-wrap;">{{ student.grades }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- PORTFOLIO PROJECTS SECTION -->
+    <!-- ============================= -->
+    <!-- Grid display of completed projects and portfolio items -->
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #28a745; color: white;">
+                    <h5 style="margin: 0;">🎯 Portfolio Projects</h5>
+                </div>
+                <div class="card-body">
+
+                    <!-- Portfolio items from project_media table -->
+                    {% set media_list = student.project_media or [] %}
+
+                    {% if media_list|length > 0 %}
+                        <div class="row g-3">
+                            <!-- Display each portfolio item in a card -->
+                            {% for media in media_list %}
+                                <div class="col-12 col-sm-6 col-md-4">
+                                    <div class="card h-100 shadow-sm" style="border: 1px solid #ddd; transition: transform 0.2s;">
+
+                                        <!-- Project title -->
+                                        <div class="card-body">
+                                            <h5 class="card-title">
+                                                {{ media.title or "Portfolio Item" }}
+                                            </h5>
+                                            <small class="text-muted d-block mb-3">
+                                                Uploaded: {{ media.uploaded_at.strftime('%b %d, %Y') }}
+                                            </small>
+                                        </div>
+
+                                        <!-- View/Download link -->
+                                        <div class="card-footer" style="background-color: #f8f9fa;">
+                                            <a href="{{ url_for('static', filename='uploads/' + media.filename) }}"
+                                               target="_blank"
+                                               class="btn btn-outline-primary btn-sm w-100">
+                                                📄 View
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted" style="text-align: center; padding: 30px;">
+                            No portfolio items yet. Check back soon!
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- COMPLETED PROJECTS FROM TASKS -->
+    <!-- =============================== -->
+    <!-- Display descriptions of completed task work -->
+
+    {% if completed_tasks|length > 0 %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #ff9800; color: white;">
+                    <h5 style="margin: 0;">✅ Completed Work</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <!-- Display each completed task -->
+                        {% for task in completed_tasks %}
+                            <div class="col-12 col-md-6">
+                                <div style="padding: 15px; border-left: 4px solid #ff9800; background-color: #f9f9f9;">
+                                    <h5 style="margin: 0 0 10px 0; color: #333;">{{ task.title }}</h5>
+                                    <p style="color: #666; font-size: 13px; margin-bottom: 8px;">
+                                        <strong>{{ task.company.name }}</strong>
+                                    </p>
+                                    <p style="color: #555; margin-bottom: 8px;">
+                                        {{ task.description[:150] }}{% if task.description|length > 150 %}...{% endif %}
+                                    </p>
+                                    <small style="color: #999;">
+                                        Completed: {{ task.created_at.strftime('%b %d, %Y') }}
+                                    </small>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- LECTURER REFERENCES SECTION -->
+    <!-- ============================= -->
+    <!-- Display lecturer references for credibility -->
+
+    {% set refs = student.lecturer_references.all() if student.lecturer_references else [] %}    {% if refs|length > 0 %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #6c63ff; color: white;">
+                    <h5 style="margin: 0;">👨‍🏫 Lecturer References</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <!-- Display each lecturer reference -->
+                        {% for ref in refs %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ ref.lecturer_name }}</strong>
+                                    <br>
+                                    <small class="text-muted">Reference from academic staff</small>
+                                </div>
+                                <span class="badge bg-success">Verified</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- REVIEWS & RATINGS SECTION -->
+    <!-- ============================ -->
+    <!-- Display reviews from completed tasks -->
+
+    {% if reviews|length > 0 %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #d32f2f; color: white;">
+                    <h5 style="margin: 0;">⭐ Reviews</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <!-- Display each review in a card -->
+                        {% for review in reviews %}
+                            {% if not review.is_hidden %}
+                                <div class="col-12 col-md-6">
+                                    <div style="padding: 15px; background-color: #f9f9f9; border-radius: 8px;">
+
+                                        <!-- Star rating -->
+                                        <div style="margin-bottom: 10px;">
+                                            {% for i in range(review.rating) %}
+                                                ⭐
+                                            {% endfor %}
+                                            <span style="color: #999; font-size: 13px;">
+                                                ({{ review.rating }}/5)
+                                            </span>
+                                        </div>
+
+                                        <!-- Review comment -->
+                                        {% if review.comment %}
+                                            <p style="color: #555; margin: 10px 0;">
+                                                "{{ review.comment }}"
+                                            </p>
+                                        {% endif %}
+
+                                        <!-- Reviewer name and date -->
+                                        <small style="color: #999;">
+                                            — {{ review.rater.name }}
+                                            ({{ review.created_at.strftime('%b %d, %Y') }})
+                                        </small>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- CALL-TO-ACTION SECTION -->
+    <!-- ======================== -->
+    <!-- Encourage companies to hire this student -->
+
+    {% if current_user.is_authenticated and current_user.is_company %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" style="background: linear-gradient(135deg, #0066cc 0%, #004a99 100%); color: white; border: none;">
+                <div class="card-body text-center" style="padding: 30px;">
+                    <h4 style="margin-bottom: 15px;">Interested in Hiring {{ student.name }}?</h4>
+                    <p style="margin-bottom: 20px;">
+                        Post a task that matches their skills and invite them to apply, or browse our task board.
+                    </p>
+                    <div class="d-flex justify-content-center gap-2 flex-wrap">
+                        <a href="{{ url_for('add_task') }}" class="btn btn-light">
+                            Post a Task
+                        </a>
+                        <a href="{{ url_for('browse_tasks') }}" class="btn btn-outline-light">
+                            Browse Tasks
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% elif not current_user.is_authenticated %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" style="background: linear-gradient(135deg, #0066cc 0%, #004a99 100%); color: white; border: none;">
+                <div class="card-body text-center" style="padding: 30px;">
+                    <h4 style="margin-bottom: 15px;">Are you a Company Looking to Hire?</h4>
+                    <p style="margin-bottom: 20px;">
+                        Sign up and post a task to get matched with talented students like {{ student.name }}.
+                    </p>
+                    <a href="{{ url_for('register') }}" class="btn btn-light">
+                        Register as Company
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+
+<!-- JavaScript for portfolio link sharing -->
+<script>
+    /**
+     * COPY PORTFOLIO LINK
+     * ===================
+     * Copies the student's public portfolio link to clipboard.
+     * Shows feedback message to user.
+     */
+    function copyPortfolioLink() {
+        // Build the portfolio URL
+        const url = window.location.href;
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(url).then(() => {
+            // Show success feedback
+            alert('Portfolio link copied to clipboard!');
+        }).catch(err => {
+            // Fallback if clipboard API fails
+            console.error('Failed to copy:', err);
+            alert('Could not copy link. Please copy manually from the address bar.');
+        });
+    }
+</script>
+
+<!-- Inline CSS for portfolio page styling -->
+<style>
+    .portfolio-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .card {
+        transition: box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .badge {
+        font-weight: 500;
+    }
+</style>
+
+{% endblock %}
