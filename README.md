@@ -47,31 +47,6 @@ Security
 
 User passwords are securely hashed using Werkzeug. Sensitive configuration is managed through environment variables. Payment processing is handled securely through Stripe. Role-based authentication ensures that users only access permitted functionality.
 
-Installation and Setup
-# Clone repository
-git clone https://github.com/yourusername/step-platform.git
-cd step-platform
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables (.env)
-FLASK_SECRET=your_secret
-DATABASE_URL=mysql+pymysql://user:password@localhost/db_name
-
-# Run database migrations
-flask db upgrade
-
-# Run application
-python app.py
-Future Improvements
-
-Future work includes implementing a more advanced AI-driven recommendation system, adding real-time messaging between users, developing analytics dashboards for universities, and deploying the platform to a cloud environment using containerization.
-
 Acknowledgements
 
 This project was developed using Flask, Flask-Login, SQLAlchemy, and Werkzeug. AI tools such as ChatGPT and Claude were used to assist with development structure and problem solving.
