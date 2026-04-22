@@ -29,9 +29,19 @@ HTML Structure:
 -->
 
 {% extends "base.html" %}
+
+{% block extra_css %}
+<script>
+  // Add animated background marker to body
+  document.addEventListener('DOMContentLoaded', function() {
+    document.body.setAttribute('data-animated-bg', '');
+  });
+</script>
+{% endblock %}
+
 {% block content %}
 
-<div class="container-fluid portfolio-container" style="padding: 20px; background-color: #f8f9fa;">
+<div class="container-fluid portfolio-container" style="padding: 20px;">
 
     <!-- PORTFOLIO HEADER -->
     <!-- ================= -->

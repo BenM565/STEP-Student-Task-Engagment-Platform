@@ -25,8 +25,17 @@ independently for the STEP Student Task Engagement Platform.
 
           <!-- Student Overview -->
           <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
-            <div>
-              <h4 class="mb-1">{{ application.student.name }}</h4>
+            <div class="flex-grow-1">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <h4 class="mb-0">{{ application.student.name }}</h4>
+                <!-- PHASE 2: Skill Match Badge -->
+                {% set match = app_details[loop.index0].skill_match if app_details else 0 %}
+                {% if match > 0 %}
+                  <span class="badge {{ 'bg-success' if match >= 0.7 else ('bg-primary' if match >= 0.4 else 'bg-secondary') }}" style="font-size: 0.8rem;">
+                    <i class="bi bi-stars me-1"></i>{{ (match * 100)|round }}% skill match
+                  </span>
+                {% endif %}
+              </div>
               <div class="small text-muted">Email: {{ application.student.email }}</div>
             </div>
             <div>

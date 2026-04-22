@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 """
 ================================================================================
 STEP STUDENT TASK ENGAGEMENT PLATFORM - MAIN APPLICATION
@@ -644,6 +646,9 @@ class User(UserMixin, db.Model):
     stripe_customer_id = db.Column(db.String(255), nullable=True)
     profile_url = db.Column(db.String(120), unique=True, nullable=True)
 
+    # PHASE 4: User preferences (JSON stored as TEXT in SQLite)
+    user_prefs = db.Column(db.Text, default="{}")
+
     # Relationships
     university = db.relationship("University", backref="students", foreign_keys=[university_id])
 
@@ -669,6 +674,54 @@ class User(UserMixin, db.Model):
     def is_admin(self) -> bool:
         """Check if user is an admin"""
         return (self.role or "").lower() == "admin"
+
+    @property
+    def completeness_pct(self) -> int:
+        """
+        PHASE 4 — Profile Completeness Percentage
+
+        Calculates profile completeness for students based on key criteria:
+        - Name filled (automatic)
+        - Headline set (10%)
+        - Skills (3+ items) (20%)
+        - Portfolio media (1+ items) (20%)
+        - Lecturer reference (1+ items) (20%)
+        - First application submitted (30%)
+
+        Returns:
+            int: Completeness percentage (0-100)
+        """
+        if not self.is_student:
+            return 100  # Non-students always 100%
+
+        score = 0
+
+        # Headline (10%)
+        if self.headline and self.headline.strip():
+            score += 10
+
+        # Skills - 3 or more (20%)
+        if self.skills:
+            skill_list = [s.strip() for s in self.skills.split(",") if s.strip()]
+            if len(skill_list) >= 3:
+                score += 20
+
+        # Portfolio media - at least 1 (20%)
+        media_count = ProjectMedia.query.filter_by(user_id=self.id).count()
+        if media_count >= 1:
+            score += 20
+
+        # Lecturer reference - at least 1 (20%)
+        ref_count = LecturerReference.query.filter_by(student_id=self.id).count()
+        if ref_count >= 1:
+            score += 20
+
+        # First application submitted (30%)
+        app_count = Application.query.filter_by(student_id=self.id).count()
+        if app_count >= 1:
+            score += 30
+
+        return score
 
 # ============================================================================
 # 6.2 UNIVERSITY MODEL
@@ -784,6 +837,10 @@ class Application(db.Model):
     payment_status = db.Column(db.String(20), default="pending")
     payment_authorized_at = db.Column(db.DateTime, nullable=True)
     payment_captured_at = db.Column(db.DateTime, nullable=True)
+
+    # PHASE 3: Rating appeal fields
+    rating_locked = db.Column(db.Boolean, default=False)  # Prevents rating changes after appeal resolution
+    rating_overridden = db.Column(db.Boolean, default=False)  # Admin manually adjusted rating
 
     __table_args__ = (
         db.UniqueConstraint("task_id", "student_id", name="uq_application_task_student"),
@@ -949,6 +1006,82 @@ class Review(db.Model):
     ratee = db.relationship("User", foreign_keys=[ratee_user_id])
 
 # ============================================================================
+# 6.10 RATING APPEAL MODEL - PHASE 3
+# ============================================================================
+
+class RatingAppeal(db.Model):
+    """
+    PHASE 3 — Rating Appeal Model
+
+    Allows students to appeal their computed rating score and request
+    admin review when they believe the rating is unfair.
+
+    Workflow:
+    1. Student submits appeal with reason
+    2. Admin reviews appeal and application details
+    3. Admin either approves (with optional rating lock/override) or denies
+    4. Student is notified of decision
+
+    Attributes:
+    - id: Primary key
+    - application_id: Related application being appealed
+    - student_id: Student submitting appeal
+    - reason: Student's explanation for appeal
+    - status: pending / approved / denied
+    - admin_note: Admin's response/decision notes
+    - created_at: When appeal was submitted
+    - resolved_at: When admin made decision
+    - resolved_by_id: Admin user who resolved the appeal
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey("application.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default="pending")  # pending, approved, denied
+    admin_note = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    resolved_at = db.Column(db.DateTime)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+
+    # Relationships
+    application = db.relationship("Application", backref="rating_appeals")
+    student = db.relationship("User", foreign_keys=[student_id], backref="rating_appeals")
+    resolved_by = db.relationship("User", foreign_keys=[resolved_by_id])
+
+# ============================================================================
+# 6.11 PUSH SUBSCRIPTION MODEL - PHASE 5
+# ============================================================================
+
+class PushSubscription(db.Model):
+    """
+    PHASE 5 — Web Push Subscription Model
+
+    Stores browser push notification subscriptions for users.
+    Allows server to send web push notifications to user's devices.
+
+    Attributes:
+    - id: Primary key
+    - user_id: User who owns this subscription
+    - endpoint: Push service endpoint URL
+    - p256dh: Public key for encryption
+    - auth: Authentication secret
+    - created_at: When subscription was created
+    - last_used_at: When notification was last sent to this subscription
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    endpoint = db.Column(db.String(500), nullable=False, unique=True)  # Changed from Text for MySQL compatibility
+    p256dh = db.Column(db.String(255), nullable=False)
+    auth = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_used_at = db.Column(db.DateTime)
+
+    # Relationships
+    user = db.relationship("User", backref="push_subscriptions")
+
+# ============================================================================
 # 6.10 PAYMENT TRANSACTION MODEL (Iteration 5)
 # ============================================================================
 
@@ -994,6 +1127,50 @@ deadline_at = db.Column(db.DateTime)
 def load_user(user_id):
     """Load user session by ID"""
     return db.session.get(User, int(user_id))
+
+# ============================================================================
+# PHASE 5 — WEB PUSH HELPER FUNCTION
+# ============================================================================
+
+def create_notification_with_push(user_id: int, message: str, task_id: int = None, url: str = None):
+    """
+    Create a database notification and send web push notification.
+
+    PHASE 5 helper that combines traditional database notifications
+    with modern web push notifications for better user engagement.
+
+    Args:
+        user_id: ID of user to notify
+        message: Notification message text
+        task_id: Optional related task ID
+        url: Optional URL to open when notification is clicked
+
+    Returns:
+        Notification: The created notification object
+    """
+    # Create database notification
+    notification = Notification(
+        user_id=user_id,
+        message=message,
+        task_id=task_id
+    )
+    db.session.add(notification)
+    db.session.commit()
+
+    # Send web push notification (non-blocking)
+    try:
+        from push_service import send_push_to_user
+        send_push_to_user(
+            user_id=user_id,
+            title="STEP Platform",
+            body=message,
+            url=url
+        )
+    except Exception as e:
+        print(f"[Push] Failed to send web push: {str(e)}")
+        # Don't fail the whole operation if push fails
+
+    return notification
 
 # ============================================================================
 # SECTION 8: AUTHENTICATION ROUTES
@@ -1289,6 +1466,10 @@ def student_dashboard():
     notifications = Notification.query.filter_by(user_id=current_user.id).all()
     unread_count = len([n for n in notifications if not n.is_read])
 
+    # PHASE 2: Get recommended tasks based on skills
+    from recommender import recommend_tasks_for_student
+    recommended_tasks = recommend_tasks_for_student(current_user.id, limit=5)
+
     return render_template(
         "student_dashboard.html",
         active_apps=active_apps,
@@ -1299,7 +1480,8 @@ def student_dashboard():
         rating_count=rating_count,
         rating_avg=rating_avg,
         notifications=notifications,
-        unread_count=unread_count
+        unread_count=unread_count,
+        recommended_tasks=recommended_tasks
     )
 
 # ============================================================================
@@ -2086,13 +2268,13 @@ def review_submission(application_id):
 
         db.session.commit()
 
-        notification = Notification(
+        # PHASE 5: Send notification with web push
+        create_notification_with_push(
             user_id=app_obj.student_id,
             message=message,
-            task_id=app_obj.task_id
+            task_id=app_obj.task_id,
+            url=url_for('student_dashboard')
         )
-        db.session.add(notification)
-        db.session.commit()
 
         flash('Review submitted successfully.', 'success')
         return redirect(request.referrer or url_for('task_detail', task_id=app_obj.task_id))
@@ -2858,6 +3040,16 @@ def company_applicants(task_id):
 
         applications = Application.query.filter_by(task_id=task_id).all()
 
+        # PHASE 2: Get skill match scores for ranking applicants
+        from recommender import recommend_students_for_task
+        recommended_students = recommend_students_for_task(task_id, limit=100)
+
+        # Create a lookup dict: student_id -> similarity score
+        skill_match_scores = {
+            rec['student_id']: rec['similarity']
+            for rec in recommended_students
+        }
+
         # Convert relationships to lists
         app_details = []
         for app in applications:
@@ -2874,8 +3066,12 @@ def company_applicants(task_id):
                     'student': student,
                     'lecturer_references': lecturer_refs,  # Now a list!
                     'avg_rating': avg_rating,
-                    'review_count': len(reviews)
+                    'review_count': len(reviews),
+                    'skill_match': skill_match_scores.get(student.id, 0.0)  # PHASE 2
                 })
+
+        # PHASE 2: Sort by skill match (desc), then by application date (desc)
+        app_details.sort(key=lambda x: (-x['skill_match'], -x['application'].id))
 
         return render_template(
             'company_applicants.html',
@@ -3042,6 +3238,414 @@ def admin_home():
         total_disputes=total_disputes,
         open_disputes_count=open_disputes_count,
     )
+
+# ============================================================================
+# SECTION 12.5: COMMAND PALETTE API (Phase 1)
+# ============================================================================
+
+@app.route("/api/search")
+@login_required
+def api_search():
+    """
+    Global search endpoint for command palette.
+
+    Returns JSON with tasks, students, companies, and pages scoped to current user's role.
+    Performs fuzzy matching on title/name/email. Limits to 20 total results.
+
+    Query Parameters:
+        q (str): Search query string
+
+    Returns:
+        JSON: {
+            "tasks": [{"id", "title", "company_name", "url"}],
+            "students": [{"id", "name", "email", "url"}],
+            "companies": [{"id", "name", "email", "url"}],
+            "pages": [{"title", "url"}]
+        }
+
+    Security:
+        - Students: See only their own data + available tasks
+        - Companies: See only their tasks + students who applied
+        - Admins: See all data
+    """
+    query = request.args.get("q", "").strip().lower()
+
+    if not query or len(query) < 2:
+        return jsonify({"tasks": [], "students": [], "companies": [], "pages": []})
+
+    results = {
+        "tasks": [],
+        "students": [],
+        "companies": [],
+        "pages": []
+    }
+
+    role = current_user.role.lower()
+
+    # ============================================
+    # TASK SEARCH
+    # ============================================
+    if role in ["student", "admin"]:
+        # Students see all open tasks, admins see all tasks
+        task_query = Task.query
+        if role == "student":
+            task_query = task_query.filter(Task.status == "open")
+
+        tasks = task_query.filter(
+            db.or_(
+                Task.title.ilike(f"%{query}%"),
+                Task.description.ilike(f"%{query}%"),
+                Task.tags.ilike(f"%{query}%")
+            )
+        ).limit(10).all()
+
+        for task in tasks:
+            results["tasks"].append({
+                "id": task.id,
+                "title": task.title,
+                "company_name": task.company.name if task.company else "Unknown",
+                "url": url_for("task_detail", task_id=task.id)
+            })
+
+    elif role == "company":
+        # Companies see only their own tasks
+        tasks = Task.query.filter(
+            Task.company_id == current_user.id,
+            db.or_(
+                Task.title.ilike(f"%{query}%"),
+                Task.description.ilike(f"%{query}%")
+            )
+        ).limit(10).all()
+
+        for task in tasks:
+            results["tasks"].append({
+                "id": task.id,
+                "title": task.title,
+                "company_name": current_user.name,
+                "url": url_for("task_detail", task_id=task.id)
+            })
+
+    # ============================================
+    # STUDENT SEARCH
+    # ============================================
+    if role == "admin":
+        # Admins see all students
+        students = User.query.filter(
+            User.role == "student",
+            db.or_(
+                User.name.ilike(f"%{query}%"),
+                User.email.ilike(f"%{query}%"),
+                User.skills.ilike(f"%{query}%")
+            )
+        ).limit(10).all()
+
+        for student in students:
+            results["students"].append({
+                "id": student.id,
+                "name": student.name,
+                "email": student.email,
+                "url": url_for("admin_user_detail", user_id=student.id)
+            })
+
+    elif role == "company":
+        # Companies see students who applied to their tasks
+        student_ids = db.session.query(Application.student_id).join(Task).filter(
+            Task.company_id == current_user.id
+        ).distinct().subquery()
+
+        students = User.query.filter(
+            User.id.in_(student_ids),
+            db.or_(
+                User.name.ilike(f"%{query}%"),
+                User.email.ilike(f"%{query}%")
+            )
+        ).limit(10).all()
+
+        for student in students:
+            results["students"].append({
+                "id": student.id,
+                "name": student.name,
+                "email": student.email,
+                "url": url_for("company_view_student", student_id=student.id)
+            })
+
+    # ============================================
+    # COMPANY SEARCH (Admin only)
+    # ============================================
+    if role == "admin":
+        companies = User.query.filter(
+            User.role == "company",
+            db.or_(
+                User.name.ilike(f"%{query}%"),
+                User.email.ilike(f"%{query}%")
+            )
+        ).limit(10).all()
+
+        for company in companies:
+            results["companies"].append({
+                "id": company.id,
+                "name": company.name,
+                "email": company.email,
+                "url": url_for("admin_user_detail", user_id=company.id)
+            })
+
+    # ============================================
+    # PAGE SEARCH (Static pages)
+    # ============================================
+    pages = []
+
+    if role == "student":
+        pages = [
+            {"title": "Dashboard", "url": url_for("student_dashboard"), "keywords": "dashboard home"},
+            {"title": "Browse Tasks", "url": url_for("browse_tasks"), "keywords": "tasks browse search jobs"},
+            {"title": "My Applications", "url": url_for("student_dashboard"), "keywords": "applications my tasks"},
+            {"title": "Edit Portfolio", "url": url_for("edit_portfolio"), "keywords": "portfolio profile edit"},
+            {"title": "Performance", "url": url_for("student_performance_breakdown"), "keywords": "performance stats rating"},
+        ]
+    elif role == "company":
+        pages = [
+            {"title": "Dashboard", "url": url_for("company_dashboard"), "keywords": "dashboard home"},
+            {"title": "Post Task", "url": url_for("add_task"), "keywords": "post create task job"},
+            {"title": "My Tasks", "url": url_for("company_dashboard"), "keywords": "tasks my posted"},
+            {"title": "Search Students", "url": url_for("company_search_students"), "keywords": "search students find"},
+            {"title": "Profile", "url": url_for("profile"), "keywords": "profile edit company"},
+        ]
+    elif role == "admin":
+        pages = [
+            {"title": "Admin Dashboard", "url": url_for("admin_dashboard"), "keywords": "admin dashboard home"},
+            {"title": "Users", "url": url_for("admin_users"), "keywords": "users manage admin"},
+            {"title": "Tasks", "url": url_for("admin_tasks"), "keywords": "tasks manage admin"},
+            {"title": "Disputes", "url": url_for("admin_disputes_view"), "keywords": "disputes issues admin"},
+        ]
+
+    # Filter pages by query
+    for page in pages:
+        searchable = f"{page['title']} {page['keywords']}".lower()
+        if query in searchable:
+            results["pages"].append({"title": page["title"], "url": page["url"]})
+
+    # Limit total results to 20
+    total = sum(len(results[key]) for key in results)
+    if total > 20:
+        # Trim excess results proportionally
+        results["tasks"] = results["tasks"][:7]
+        results["students"] = results["students"][:7]
+        results["companies"] = results["companies"][:3]
+        results["pages"] = results["pages"][:3]
+
+    return jsonify(results)
+
+# ============================================================================
+# PHASE 3 — RATING APPEAL ROUTES
+# ============================================================================
+
+@app.route("/ratings/<int:application_id>/appeal", methods=["GET", "POST"])
+@login_required
+def submit_rating_appeal(application_id):
+    """Student submits appeal for a specific application rating."""
+    # Verify student owns this application
+    application = Application.query.get_or_404(application_id)
+    if application.student_id != current_user.id:
+        abort(403)
+
+    # Check if appeal already exists
+    existing_appeal = RatingAppeal.query.filter_by(
+        application_id=application_id
+    ).first()
+
+    if request.method == "POST":
+        reason = request.form.get("reason", "").strip()
+
+        if not reason or len(reason) < 20:
+            flash("Please provide a detailed reason for your appeal (minimum 20 characters).", "warning")
+            return redirect(url_for("submit_rating_appeal", application_id=application_id))
+
+        if existing_appeal and existing_appeal.status == "pending":
+            flash("You already have a pending appeal for this task.", "info")
+            return redirect(url_for("student_dashboard"))
+
+        # Create new appeal
+        appeal = RatingAppeal(
+            application_id=application_id,
+            student_id=current_user.id,
+            reason=reason,
+            status="pending"
+        )
+        db.session.add(appeal)
+        db.session.commit()
+
+        # Notify admins
+        admin_users = User.query.filter_by(role="admin").all()
+        for admin in admin_users:
+            notification = Notification(
+                user_id=admin.id,
+                message=f"New rating appeal from {current_user.name}",
+                task_id=application.task_id
+            )
+            db.session.add(notification)
+        db.session.commit()
+
+        flash("Your appeal has been submitted and will be reviewed by an admin.", "success")
+        return redirect(url_for("student_dashboard"))
+
+    # GET: Show appeal form
+    return render_template(
+        "appeal_new.html",
+        application=application,
+        existing_appeal=existing_appeal
+    )
+
+
+@app.route("/admin/appeals")
+@login_required
+def admin_appeals():
+    """Admin view all pending rating appeals."""
+    if current_user.role != "admin":
+        abort(403)
+
+    # Get all appeals with student and application data
+    appeals = RatingAppeal.query.order_by(
+        RatingAppeal.status == "pending",  # Pending first
+        RatingAppeal.created_at.desc()
+    ).all()
+
+    return render_template("admin_appeals.html", appeals=appeals)
+
+
+@app.route("/admin/appeals/<int:appeal_id>/resolve", methods=["POST"])
+@login_required
+def admin_resolve_appeal(appeal_id):
+    """Admin resolves a rating appeal."""
+    if current_user.role != "admin":
+        abort(403)
+
+    appeal = RatingAppeal.query.get_or_404(appeal_id)
+
+    decision = request.form.get("decision")  # approved / denied
+    admin_note = request.form.get("admin_note", "").strip()
+    lock_rating = request.form.get("lock_rating") == "on"
+    override_rating = request.form.get("override_rating") == "on"
+
+    if decision not in ["approved", "denied"]:
+        flash("Invalid decision.", "danger")
+        return redirect(url_for("admin_appeals"))
+
+    # Update appeal
+    appeal.status = decision
+    appeal.admin_note = admin_note
+    appeal.resolved_at = datetime.utcnow()
+    appeal.resolved_by_id = current_user.id
+
+    # Update application flags if approved
+    if decision == "approved":
+        application = appeal.application
+        if lock_rating:
+            application.rating_locked = True
+        if override_rating:
+            application.rating_overridden = True
+
+    db.session.commit()
+
+    # Notify student
+    notification = Notification(
+        user_id=appeal.student_id,
+        message=f"Your rating appeal has been {decision}",
+        task_id=appeal.application.task_id
+    )
+    db.session.add(notification)
+    db.session.commit()
+
+    flash(f"Appeal {decision}.", "success")
+    return redirect(url_for("admin_appeals"))
+
+# ============================================================================
+# PHASE 5 — WEB PUSH NOTIFICATION ROUTES
+# ============================================================================
+
+@app.route("/push/subscribe", methods=["POST"])
+@login_required
+def push_subscribe():
+    """Subscribe user to web push notifications."""
+    try:
+        data = request.get_json()
+
+        if not data or 'endpoint' not in data:
+            return jsonify({"error": "Missing subscription data"}), 400
+
+        endpoint = data.get('endpoint')
+        keys = data.get('keys', {})
+        p256dh = keys.get('p256dh')
+        auth = keys.get('auth')
+
+        if not endpoint or not p256dh or not auth:
+            return jsonify({"error": "Incomplete subscription data"}), 400
+
+        # Check if subscription already exists
+        existing = PushSubscription.query.filter_by(endpoint=endpoint).first()
+        if existing:
+            # Update if ownership changed (unlikely but possible)
+            if existing.user_id != current_user.id:
+                existing.user_id = current_user.id
+                db.session.commit()
+            return jsonify({"message": "Subscription already exists"}), 200
+
+        # Create new subscription
+        subscription = PushSubscription(
+            user_id=current_user.id,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth
+        )
+        db.session.add(subscription)
+        db.session.commit()
+
+        return jsonify({"message": "Subscribed successfully"}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Push subscription error: {str(e)}")
+        return jsonify({"error": "Failed to subscribe"}), 500
+
+
+@app.route("/push/unsubscribe", methods=["POST"])
+@login_required
+def push_unsubscribe():
+    """Unsubscribe user from web push notifications."""
+    try:
+        data = request.get_json()
+        endpoint = data.get('endpoint')
+
+        if not endpoint:
+            return jsonify({"error": "Missing endpoint"}), 400
+
+        subscription = PushSubscription.query.filter_by(
+            endpoint=endpoint,
+            user_id=current_user.id
+        ).first()
+
+        if subscription:
+            db.session.delete(subscription)
+            db.session.commit()
+            return jsonify({"message": "Unsubscribed successfully"}), 200
+
+        return jsonify({"message": "Subscription not found"}), 404
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Push unsubscribe error: {str(e)}")
+        return jsonify({"error": "Failed to unsubscribe"}), 500
+
+
+@app.route("/push/public-key")
+def push_public_key():
+    """Return VAPID public key for client-side subscription."""
+    import os
+    public_key = os.getenv('VAPID_PUBLIC_KEY', '')
+
+    if not public_key:
+        return jsonify({"error": "VAPID keys not configured"}), 500
+
+    return jsonify({"publicKey": public_key}), 200
 
 # ============================================================================
 # SECTION 13: ERROR HANDLERS

@@ -1,282 +1,573 @@
 <!--
-Student Dashboard - UPDATED
-Removed modal popup, replaced with direct navigation to edit_portfolio page
+Student Dashboard - MODERN REDESIGN
+Professional, sleek interface with gradients and smooth animations
 -->
 {% extends "base.html" %}
 {% block content %}
 
-<div class="container mt-4">
+<div class="container mt-4 mb-5">
 
-  <!-- WELCOME SECTION -->
-  <div class="welcome-section text-center mb-5">
-    <h1 class="dashboard-title">Welcome back, {{ current_user.name }}! 👋</h1>
-    <p class="dashboard-subtitle">Here's your performance overview</p>
-  </div>
-
-  <!-- PORTFOLIO QUICK ACCESS CARD - DIRECT LINK (NO MODAL) -->
-  <div class="portfolio-quick-access mb-5">
-    <div class="card border-primary shadow-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-      <div class="card-body d-flex justify-content-between align-items-center p-4">
-        <div>
-          <h5 class="card-title mb-2">✨ Build Your Portfolio</h5>
-          <p class="card-text mb-0">Showcase your skills, projects, and achievements to attract companies</p>
-        </div>
-        <div>
-          <a href="{{ url_for('edit_portfolio') }}" class="btn btn-light btn-lg">
-            <i class="bi bi-pencil-square"></i> Manage Portfolio
-          </a>
-        </div>
+  <!-- MODERN WELCOME HEADER -->
+  <div class="welcome-header mb-5">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+      <div>
+        <h1 class="dashboard-welcome mb-2">Welcome back, {{ current_user.name }}! 👋</h1>
+        <p class="text-secondary mb-0">Here's your performance overview</p>
       </div>
-    </div>
-  </div>
-
-  <!-- PERFORMANCE SNAPSHOT -->
-  <div class="performance-card">
-    <div class="card-header-clean">
-      <h2 class="section-title">Performance Snapshot</h2>
-    </div>
-
-    <div class="stats-grid">
-      <div class="stat-box">
-        <div class="stat-value stat-active">{{ active_apps|length if active_apps else 0 }}</div>
-        <div class="stat-label">Active Tasks</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value stat-pending">{{ pending_review_apps|length if pending_review_apps else 0 }}</div>
-        <div class="stat-label">Pending Review</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value stat-completed">{{ applications|selectattr('status', 'equalto', 'completed')|list|length }}</div>
-        <div class="stat-label">Completed</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value stat-rating">{{ rating_avg }}</div>
-        <div class="stat-label">Avg Rating</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- RATING CARD -->
-  <div class="rating-card">
-    <h2 class="section-title text-center mb-4">Your Rating</h2>
-
-    <div class="rating-display">
-      {% if rating_count > 0 %}
-        <div class="stars-large mb-3">
-          {% set full_stars = (rating_avg)|round(0, 'common')|int %}
-          {% set empty_stars = 5 - full_stars %}
-          {% for i in range(full_stars) %}
-            <i class="bi bi-star-fill"></i>
-          {% endfor %}
-          {% for i in range(empty_stars) %}
-            <i class="bi bi-star"></i>
-          {% endfor %}
-        </div>
-        <div class="rating-score">{{ rating_avg }}/5</div>
-        <p class="rating-count">Based on {{ rating_count }} reviews</p>
-      {% else %}
-        <div class="stars-large mb-3">
-          <i class="bi bi-star"></i>
-          <i class="bi bi-star"></i>
-          <i class="bi bi-star"></i>
-          <i class="bi bi-star"></i>
-          <i class="bi bi-star"></i>
-        </div>
-        <div class="rating-score">0.0/5</div>
-        <p class="rating-count">No reviews yet</p>
-      {% endif %}
-    </div>
-
-    <div class="text-center mt-4">
-      <a href="{{ url_for('student_performance_breakdown') }}"
-         class="btn btn-outline-primary btn-lg">
-        View Performance Breakdown
+      <a href="{{ url_for('browse_tasks') }}" class="btn btn-primary btn-lg">
+        <i class="bi bi-search me-2"></i>Browse Tasks
       </a>
     </div>
   </div>
 
-  <hr class="my-5">
+  <!-- PHASE 4: ONBOARDING CHECKLIST -->
+  {% if current_user.completeness_pct < 100 %}
+    <div class="onboarding-checklist mb-5" id="onboardingChecklist">
+      <div class="card border-0 shadow-sm" style="border-radius: var(--radius-xl); border-left: 4px solid var(--electric-blue);">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+              <h4 class="mb-1">
+                <i class="bi bi-list-check text-primary me-2"></i>Complete Your Profile
+              </h4>
+              <p class="text-muted mb-0">{{ current_user.completeness_pct }}% complete — finish these steps to maximize your visibility</p>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('onboardingChecklist').style.display='none'">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
 
-  <!-- ACTIVE TASKS SECTION -->
-  <div class="active-tasks-section mb-5">
-    <h3 class="section-title mb-3">Active Tasks</h3>
+          <div class="progress mb-3" style="height: 10px; border-radius: 5px;">
+            <div
+              class="progress-bar"
+              style="width: {{ current_user.completeness_pct }}%; background: linear-gradient(90deg, var(--electric-blue), var(--warm-orange));"
+            ></div>
+          </div>
 
-    {% if active_apps and active_apps|length > 0 %}
-      {% for app in active_apps %}
-        <div class="card mb-3 shadow-sm">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start mb-3">
-              <div>
-                <h5 class="mb-1">{{ app.task.title }}</h5>
-                <p class="text-muted small mb-0">{{ app.task.company.name }}</p>
-              </div>
-              <span class="badge bg-success">Selected</span>
+          <div class="checklist-items">
+            <!-- Headline -->
+            <div class="checklist-item d-flex align-items-center gap-2 mb-2">
+              <i class="bi {{ 'bi-check-circle-fill text-success' if current_user.headline else 'bi-circle text-muted' }}" style="font-size: 20px;"></i>
+              <span class="{{ 'text-decoration-line-through text-muted' if current_user.headline else '' }}">
+                Add a headline
+              </span>
+              {% if not current_user.headline %}
+                <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+              {% endif %}
             </div>
 
-            {% if app.task.description %}
-              <p class="mb-3">{{ app.task.description }}</p>
-            {% endif %}
-
-            {% if app.media_file %}
-              <div class="mb-3">
-                <h6 class="mb-2">Company Media</h6>
-                <a href="{{ url_for('static', filename='uploads/' ~ app.media_file) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                  <i class="bi bi-download"></i> Download
-                </a>
-              </div>
-            {% endif %}
-
-            <div class="mb-3">
-              <h6 class="mb-2">Your Submission</h6>
-              <form method="POST" action="{{ url_for('student_upload_project_media', application_id=app.id) }}" enctype="multipart/form-data">
-                <div class="input-group input-group-sm">
-                  <input type="file" name="file" class="form-control" required>
-                  <button class="btn btn-primary" type="submit">Upload Work</button>
-                </div>
-              </form>
+            <!-- Skills -->
+            {% set skill_count = current_user.skills.split(',')|select('!=', '')|list|length if current_user.skills else 0 %}
+            <div class="checklist-item d-flex align-items-center gap-2 mb-2">
+              <i class="bi {{ 'bi-check-circle-fill text-success' if skill_count >= 3 else 'bi-circle text-muted' }}" style="font-size: 20px;"></i>
+              <span class="{{ 'text-decoration-line-through text-muted' if skill_count >= 3 else '' }}">
+                Add at least 3 skills ({{ skill_count }}/3)
+              </span>
+              {% if skill_count < 3 %}
+                <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+              {% endif %}
             </div>
 
-            {% if app.student_file %}
-              <div class="mb-3">
-                <h6 class="mb-2">Your Uploaded File</h6>
-                <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                  <i class="bi bi-download"></i> Download Your File
-                </a>
-              </div>
-            {% endif %}
+            <!-- Portfolio Media -->
+            {% set media_count = current_user.id|default(0) %}
+            <div class="checklist-item d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-circle text-muted" style="font-size: 20px;"></i>
+              <span>Upload portfolio media (projects, work samples)</span>
+              <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+            </div>
 
-            {% if app.review_status %}
-              <div class="alert alert-info mb-0">
-                <strong>Review Status:</strong>
-                {% if app.review_status == 'pending' %}
-                  <span class="badge bg-warning">Pending Review</span>
-                {% elif app.review_status == 'approved' %}
-                  <span class="badge bg-success">Approved ✓</span>
-                {% elif app.review_status == 'changes_requested' %}
-                  <span class="badge bg-warning">Changes Requested</span>
-                {% endif %}
+            <!-- Lecturer Reference -->
+            <div class="checklist-item d-flex align-items-center gap-2 mb-2">
+              <i class="bi bi-circle text-muted" style="font-size: 20px;"></i>
+              <span>Add a lecturer reference</span>
+              <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+            </div>
 
-                {% if app.review_feedback %}
-                  <p class="mb-0 mt-2"><strong>Feedback:</strong> {{ app.review_feedback }}</p>
-                {% endif %}
-              </div>
-            {% endif %}
+            <!-- First Application -->
+            {% set app_count = active_apps|length + pending_review_apps|length + past_apps|length %}
+            <div class="checklist-item d-flex align-items-center gap-2 mb-2">
+              <i class="bi {{ 'bi-check-circle-fill text-success' if app_count > 0 else 'bi-circle text-muted' }}" style="font-size: 20px;"></i>
+              <span class="{{ 'text-decoration-line-through text-muted' if app_count > 0 else '' }}">
+                Apply to your first task
+              </span>
+              {% if app_count == 0 %}
+                <a href="{{ url_for('browse_tasks') }}" class="ms-auto btn btn-sm btn-outline-primary">Browse</a>
+              {% endif %}
+            </div>
           </div>
         </div>
-      {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- PORTFOLIO QUICK ACCESS - GRADIENT CARD -->
+  <div class="portfolio-cta-card mb-5">
+    <div class="card border-0 shadow-lg overflow-hidden" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: var(--radius-xl);">
+      <div class="card-body p-4">
+        <div class="row align-items-center">
+          <div class="col-md-8">
+            <div class="d-flex align-items-center gap-3 mb-3">
+              <div class="icon-circle" style="background: rgba(255, 255, 255, 0.2); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-stars" style="font-size: 28px; color: white;"></i>
+              </div>
+              <div>
+                <h5 class="text-white fw-bold mb-1">Build Your Portfolio</h5>
+                <p class="text-white mb-0" style="opacity: 0.9; font-size: 0.95rem;">Showcase your skills and attract top companies</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4 text-md-end text-start">
+            <a href="{{ url_for('edit_portfolio') }}" class="btn btn-light btn-lg shadow-sm">
+              <i class="bi bi-pencil-square me-2"></i>Manage Portfolio
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERFORMANCE STATS - MODERN GRID -->
+  <div class="stats-section mb-5">
+    <h2 class="section-title mb-4">Performance Snapshot</h2>
+
+    <div class="row g-4 mb-4">
+      <!-- Active Tasks -->
+      <div class="col-lg-3 col-md-6">
+        <div class="stat-card-modern card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: var(--radius-xl);">
+          <div class="card-body p-4 text-white">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div class="stat-icon" style="width: 50px; height: 50px; background: rgba(255, 255, 255, 0.2); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-briefcase-fill" style="font-size: 24px;"></i>
+              </div>
+              <i class="bi bi-arrow-up-right" style="font-size: 20px; opacity: 0.7;"></i>
+            </div>
+            <h3 class="stat-value-modern mb-1" style="font-size: 2.5rem; font-weight: 800;">{{ active_apps|length if active_apps else 0 }}</h3>
+            <p class="stat-label-modern mb-0" style="opacity: 0.9; font-weight: 500;">Active Tasks</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Review -->
+      <div class="col-lg-3 col-md-6">
+        <div class="stat-card-modern card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: var(--radius-xl);">
+          <div class="card-body p-4 text-white">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div class="stat-icon" style="width: 50px; height: 50px; background: rgba(255, 255, 255, 0.2); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-hourglass-split" style="font-size: 24px;"></i>
+              </div>
+              <i class="bi bi-clock" style="font-size: 20px; opacity: 0.7;"></i>
+            </div>
+            <h3 class="stat-value-modern mb-1" style="font-size: 2.5rem; font-weight: 800;">{{ pending_review_apps|length if pending_review_apps else 0 }}</h3>
+            <p class="stat-label-modern mb-0" style="opacity: 0.9; font-weight: 500;">Pending Review</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Completed -->
+      <div class="col-lg-3 col-md-6">
+        <div class="stat-card-modern card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: var(--radius-xl);">
+          <div class="card-body p-4 text-white">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div class="stat-icon" style="width: 50px; height: 50px; background: rgba(255, 255, 255, 0.2); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-check-circle-fill" style="font-size: 24px;"></i>
+              </div>
+              <i class="bi bi-trophy" style="font-size: 20px; opacity: 0.7;"></i>
+            </div>
+            <h3 class="stat-value-modern mb-1" style="font-size: 2.5rem; font-weight: 800;">{{ applications|selectattr('status', 'equalto', 'completed')|list|length }}</h3>
+            <p class="stat-label-modern mb-0" style="opacity: 0.9; font-weight: 500;">Completed</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Average Rating -->
+      <div class="col-lg-3 col-md-6">
+        <div class="stat-card-modern card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); border-radius: var(--radius-xl);">
+          <div class="card-body p-4 text-white">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div class="stat-icon" style="width: 50px; height: 50px; background: rgba(255, 255, 255, 0.2); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-star-fill" style="font-size: 24px;"></i>
+              </div>
+              <i class="bi bi-graph-up" style="font-size: 20px; opacity: 0.7;"></i>
+            </div>
+            <h3 class="stat-value-modern mb-1" style="font-size: 2.5rem; font-weight: 800;">{{ rating_avg }}</h3>
+            <p class="stat-label-modern mb-0" style="opacity: 0.9; font-weight: 500;">Avg Rating</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECOMMENDED TASKS - PHASE 2 -->
+  {% if recommended_tasks %}
+  <div class="recommended-tasks-section mb-5">
+    <div class="card border-0 shadow-sm" style="border-radius: var(--radius-xl); overflow: hidden; border-left: 4px solid var(--electric-blue);">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-lightbulb-fill text-primary" style="font-size: 24px;"></i>
+            <h4 class="mb-0">Recommended for You</h4>
+          </div>
+          <span class="badge bg-primary">{{ recommended_tasks|length }} matches</span>
+        </div>
+        <p class="text-muted mb-4">Tasks matching your skills</p>
+
+        <div class="row g-3">
+          {% for rec in recommended_tasks %}
+          <div class="col-12">
+            <div class="card border shadow-sm hover-lift" style="border-radius: var(--radius-lg); transition: all 0.2s ease;">
+              <div class="card-body p-3">
+                <div class="row align-items-center">
+                  <div class="col-md-7">
+                    <h6 class="mb-1">{{ rec.title }}</h6>
+                    <div class="small text-muted mb-2">
+                      <i class="bi bi-building me-1"></i>{{ rec.company_name }}
+                    </div>
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for tag in rec.tags.split(',')[:4] %}
+                      <span class="badge bg-light text-dark" style="font-size: 0.75rem;">{{ tag.strip() }}</span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div class="col-md-3 text-center my-2">
+                    <div class="skill-match">
+                      <div class="circular-progress" style="width: 60px; height: 60px; border-radius: 50%; background: conic-gradient(var(--electric-blue) {{ (rec.similarity * 100)|round }}%, var(--border-light) 0); display: flex; align-items: center; justify-content: center; position: relative;">
+                        <div style="width: 48px; height: 48px; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center;">
+                          <span class="fw-bold text-primary">{{ (rec.similarity * 100)|round }}%</span>
+                        </div>
+                      </div>
+                      <div class="small text-muted mt-1">Skill match</div>
+                    </div>
+                  </div>
+                  <div class="col-md-2 text-md-end">
+                    <a href="{{ url_for('task_detail', task_id=rec.task_id) }}" class="btn btn-sm btn-primary">View Task</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- RATING DETAILED CARD -->
+  <div class="rating-section mb-5">
+    <div class="card border-0 shadow-sm" style="border-radius: var(--radius-xl); overflow: hidden;">
+      <div class="card-body p-5 text-center">
+        <h2 class="section-title mb-4">Your Rating</h2>
+
+        {% if rating_count > 0 %}
+          <div class="rating-display mb-4">
+            <div class="stars-large mb-3" style="font-size: 2.5rem; color: var(--warm-orange);">
+              {% set full_stars = (rating_avg)|round(0, 'common')|int %}
+              {% set empty_stars = 5 - full_stars %}
+              {% for i in range(full_stars) %}
+                <i class="bi bi-star-fill"></i>
+              {% endfor %}
+              {% for i in range(empty_stars) %}
+                <i class="bi bi-star"></i>
+              {% endfor %}
+            </div>
+            <div class="rating-score mb-2" style="font-size: 3rem; font-weight: 800; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">{{ rating_avg }}/5</div>
+            <p class="text-secondary mb-0">Based on {{ rating_count }} reviews</p>
+          </div>
+        {% else %}
+          <div class="rating-display mb-4">
+            <div class="stars-large mb-3" style="font-size: 2.5rem; color: var(--border-medium);">
+              <i class="bi bi-star"></i>
+              <i class="bi bi-star"></i>
+              <i class="bi bi-star"></i>
+              <i class="bi bi-star"></i>
+              <i class="bi bi-star"></i>
+            </div>
+            <div class="rating-score mb-2" style="font-size: 3rem; font-weight: 800; color: var(--text-muted);">0.0/5</div>
+            <p class="text-secondary mb-0">No reviews yet</p>
+          </div>
+        {% endif %}
+
+        <a href="{{ url_for('student_performance_breakdown') }}" class="btn btn-outline-primary btn-lg">
+          <i class="bi bi-bar-chart-line me-2"></i>View Performance Breakdown
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <hr class="my-5" style="opacity: 0.1;">
+
+  <!-- ACTIVE TASKS SECTION -->
+  <div class="tasks-section mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="section-title mb-0">
+        <i class="bi bi-lightning-charge-fill me-2" style="color: var(--electric-blue);"></i>Active Tasks
+      </h3>
+      <span class="badge" style="background: var(--electric-blue); padding: 0.5rem 1rem; border-radius: var(--radius-full); font-size: 0.9rem;">{{ active_apps|length if active_apps else 0 }} Active</span>
+    </div>
+
+    {% if active_apps and active_apps|length > 0 %}
+      <div class="row g-4">
+        {% for app in active_apps %}
+          <div class="col-12">
+            <div class="task-card-modern card border-0 shadow-sm" style="border-radius: var(--radius-xl); border-left: 4px solid var(--primary-color) !important;">
+              <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                  <div class="flex-grow-1">
+                    <h5 class="fw-bold mb-2">{{ app.task.title }}</h5>
+                    <p class="text-secondary small mb-2">
+                      <i class="bi bi-building me-1"></i>{{ app.task.company.name }}
+                    </p>
+                    <span class="badge bg-success" style="border-radius: var(--radius-md);">
+                      <i class="bi bi-check-circle me-1"></i>Selected
+                    </span>
+                  </div>
+                </div>
+
+                {% if app.task.description %}
+                  <p class="text-secondary mb-3">{{ app.task.description }}</p>
+                {% endif %}
+
+                {% if app.media_file %}
+                  <div class="mb-3 p-3" style="background: var(--bg-secondary); border-radius: var(--radius-lg);">
+                    <h6 class="fw-semibold mb-2">
+                      <i class="bi bi-file-earmark-text me-2"></i>Company Media
+                    </h6>
+                    <a href="{{ url_for('static', filename='uploads/' ~ app.media_file) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                      <i class="bi bi-download me-1"></i>Download
+                    </a>
+                  </div>
+                {% endif %}
+
+                <div class="mb-3">
+                  <h6 class="fw-semibold mb-3">
+                    <i class="bi bi-cloud-upload me-2"></i>Your Submission
+                  </h6>
+                  <form method="POST" action="{{ url_for('student_upload_project_media', application_id=app.id) }}" enctype="multipart/form-data">
+                    <div class="input-group">
+                      <input type="file" name="file" class="form-control" required>
+                      <button class="btn btn-primary" type="submit">
+                        <i class="bi bi-upload me-1"></i>Upload Work
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {% if app.student_file %}
+                  <div class="mb-3 p-3" style="background: rgba(0, 255, 136, 0.1); border-radius: var(--radius-lg); border: 1px solid rgba(0, 255, 136, 0.2);">
+                    <h6 class="fw-semibold mb-2" style="color: var(--primary-dark);">
+                      <i class="bi bi-check-circle-fill me-2"></i>Your Uploaded File
+                    </h6>
+                    <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-primary">
+                      <i class="bi bi-download me-1"></i>View File
+                    </a>
+                  </div>
+                {% endif %}
+
+                {% if app.review_status %}
+                  <div class="alert {% if app.review_status == 'approved' %}alert-success{% elif app.review_status == 'pending' %}alert-info{% else %}alert-warning{% endif %} mb-0" style="border-radius: var(--radius-lg);">
+                    <strong>
+                      <i class="bi bi-info-circle me-2"></i>Review Status:
+                    </strong>
+                    {% if app.review_status == 'pending' %}
+                      <span class="badge bg-warning">Pending Review</span>
+                    {% elif app.review_status == 'approved' %}
+                      <span class="badge bg-success">Approved ✓</span>
+                    {% elif app.review_status == 'changes_requested' %}
+                      <span class="badge bg-warning">Changes Requested</span>
+                    {% endif %}
+
+                    {% if app.review_feedback %}
+                      <p class="mb-0 mt-2"><strong>Feedback:</strong> {{ app.review_feedback }}</p>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     {% else %}
-      <div class="alert alert-light border">
-        <p class="mb-0">No active tasks. <a href="{{ url_for('browse_tasks') }}">Browse available tasks</a> to apply!</p>
+      <div class="empty-state-card card border-0 shadow-sm" style="border-radius: var(--radius-xl); border: 2px dashed var(--border-light);">
+        <div class="card-body text-center p-5">
+          <i class="bi bi-inbox" style="font-size: 4rem; color: var(--text-muted); opacity: 0.5;"></i>
+          <h5 class="mt-3 mb-2">No active tasks</h5>
+          <p class="text-secondary mb-3">Ready to start working? Browse available tasks and apply!</p>
+          <a href="{{ url_for('browse_tasks') }}" class="btn btn-primary">
+            <i class="bi bi-search me-2"></i>Browse Tasks
+          </a>
+        </div>
       </div>
     {% endif %}
   </div>
 
   <!-- PENDING REVIEW SECTION -->
-  <div class="pending-review-section mb-5">
-    <h3 class="section-title mb-3">Pending Review</h3>
+  <div class="tasks-section mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="section-title mb-0">
+        <i class="bi bi-clock-history me-2" style="color: var(--warm-orange);"></i>Pending Review
+      </h3>
+      <span class="badge" style="background: var(--warm-orange); padding: 0.5rem 1rem; border-radius: var(--radius-full); font-size: 0.9rem;">{{ pending_review_apps|length if pending_review_apps else 0 }} Pending</span>
+    </div>
 
     {% if pending_review_apps and pending_review_apps|length > 0 %}
-      {% for app in pending_review_apps %}
-        <div class="card mb-3 shadow-sm border-warning">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start mb-2">
-              <div>
-                <h5 class="mb-1">{{ app.task.title }}</h5>
-                <p class="text-muted small mb-0">{{ app.task.company.name }}</p>
+      <div class="row g-4">
+        {% for app in pending_review_apps %}
+          <div class="col-12">
+            <div class="task-card-modern card border-0 shadow-sm" style="border-radius: var(--radius-xl); border-left: 4px solid var(--warm-orange) !important;">
+              <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                  <div class="flex-grow-1">
+                    <h5 class="fw-bold mb-2">{{ app.task.title }}</h5>
+                    <p class="text-secondary small mb-2">
+                      <i class="bi bi-building me-1"></i>{{ app.task.company.name }}
+                    </p>
+                    <span class="badge" style="background: var(--warm-orange); border-radius: var(--radius-md);">
+                      <i class="bi bi-hourglass-split me-1"></i>Awaiting Review
+                    </span>
+                  </div>
+                </div>
+
+                {% if app.submitted_at %}
+                  <p class="text-secondary small mb-3">
+                    <i class="bi bi-calendar-check me-1"></i>
+                    <strong>Submitted:</strong> {{ app.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+                  </p>
+                {% endif %}
+
+                {% if app.student_file %}
+                  <div class="mb-3 p-3" style="background: var(--bg-secondary); border-radius: var(--radius-lg);">
+                    <h6 class="fw-semibold mb-2">
+                      <i class="bi bi-file-earmark-check me-2"></i>Your Submission
+                    </h6>
+                    <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-primary">
+                      <i class="bi bi-download me-1"></i>View Submission
+                    </a>
+                  </div>
+                {% endif %}
+
+                {% if app.review_feedback %}
+                  <div class="alert alert-info mb-0" style="border-radius: var(--radius-lg);">
+                    <strong><i class="bi bi-chat-dots me-2"></i>Company Feedback:</strong>
+                    <p class="mb-0 mt-2">{{ app.review_feedback }}</p>
+                  </div>
+                {% endif %}
               </div>
-              <span class="badge bg-warning">Awaiting Review</span>
             </div>
-
-            {% if app.submitted_at %}
-              <p class="text-muted small mb-3">
-                <strong>Submitted:</strong> {{ app.submitted_at.strftime('%Y-%m-%d %H:%M') }}
-              </p>
-            {% endif %}
-
-            {% if app.student_file %}
-              <div class="mb-3">
-                <h6 class="mb-2">Your Submission</h6>
-                <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-primary">
-                  <i class="bi bi-download"></i> View Submission
-                </a>
-              </div>
-            {% endif %}
-
-            {% if app.review_feedback %}
-              <div class="alert alert-info mb-0">
-                <strong>Company Feedback:</strong>
-                <p class="mb-0 mt-2">{{ app.review_feedback }}</p>
-              </div>
-            {% endif %}
           </div>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
     {% else %}
-      <div class="alert alert-light border">
-        <p class="mb-0">No submissions pending review. Upload your work in Active Tasks!</p>
+      <div class="empty-state-card card border-0 shadow-sm" style="border-radius: var(--radius-xl); border: 2px dashed var(--border-light);">
+        <div class="card-body text-center p-5">
+          <i class="bi bi-check2-all" style="font-size: 4rem; color: var(--text-muted); opacity: 0.5;"></i>
+          <h5 class="mt-3 mb-2">All caught up!</h5>
+          <p class="text-secondary mb-0">No submissions pending review. Upload your work in Active Tasks!</p>
+        </div>
       </div>
     {% endif %}
   </div>
 
-  <!-- PAST TASKS / COMPLETED SECTION -->
-  <div class="past-tasks-section mb-5">
-    <h3 class="section-title mb-3">Past Tasks</h3>
+  <!-- PAST TASKS SECTION -->
+  <div class="tasks-section mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="section-title mb-0">
+        <i class="bi bi-trophy-fill me-2" style="color: #4facfe;"></i>Past Tasks
+      </h3>
+      <span class="badge" style="background: #4facfe; padding: 0.5rem 1rem; border-radius: var(--radius-full); font-size: 0.9rem;">{{ past_apps|length if past_apps else 0 }} Completed</span>
+    </div>
 
     {% if past_apps and past_apps|length > 0 %}
-      {% for app in past_apps %}
-        <div class="card mb-3 shadow-sm border-success">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start mb-2">
-              <div>
-                <h5 class="mb-1">{{ app.task.title }}</h5>
-                <p class="text-muted small mb-0">{{ app.task.company.name }}</p>
+      <div class="row g-4">
+        {% for app in past_apps %}
+          <div class="col-md-6">
+            <div class="task-card-modern card border-0 shadow-sm h-100" style="border-radius: var(--radius-xl); border-left: 4px solid #4facfe !important;">
+              <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                  <div class="flex-grow-1">
+                    <h5 class="fw-bold mb-2">{{ app.task.title }}</h5>
+                    <p class="text-secondary small mb-2">
+                      <i class="bi bi-building me-1"></i>{{ app.task.company.name }}
+                    </p>
+                    <span class="badge bg-success" style="border-radius: var(--radius-md);">
+                      <i class="bi bi-check-circle-fill me-1"></i>Completed ✓
+                    </span>
+                  </div>
+                </div>
+
+                {% if app.student_file %}
+                  <div class="mb-3">
+                    <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                      <i class="bi bi-download me-1"></i>View Submission
+                    </a>
+                  </div>
+                {% endif %}
+
+                {% if app.review_feedback %}
+                  <div class="alert alert-success mb-0" style="border-radius: var(--radius-lg);">
+                    <strong><i class="bi bi-chat-heart me-2"></i>Company Feedback:</strong>
+                    <p class="mb-0 mt-2">{{ app.review_feedback }}</p>
+                  </div>
+                {% endif %}
               </div>
-              <span class="badge bg-success">Completed ✓</span>
             </div>
-
-            {% if app.student_file %}
-              <div class="mb-3">
-                <h6 class="mb-2">Your Submission</h6>
-                <a href="{{ url_for('static', filename='uploads/' ~ app.student_file) }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                  <i class="bi bi-download"></i> View Submission
-                </a>
-              </div>
-            {% endif %}
-
-            {% if app.review_feedback %}
-              <div class="alert alert-success mb-0">
-                <strong>Company Feedback:</strong>
-                <p class="mb-0 mt-2">{{ app.review_feedback }}</p>
-              </div>
-            {% endif %}
           </div>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
     {% else %}
-      <div class="alert alert-light border">
-        <p class="mb-0">No completed tasks yet. Complete your active tasks to see them here!</p>
+      <div class="empty-state-card card border-0 shadow-sm" style="border-radius: var(--radius-xl); border: 2px dashed var(--border-light);">
+        <div class="card-body text-center p-5">
+          <i class="bi bi-trophy" style="font-size: 4rem; color: var(--text-muted); opacity: 0.5;"></i>
+          <h5 class="mt-3 mb-2">No completed tasks yet</h5>
+          <p class="text-secondary mb-0">Complete your active tasks to build your portfolio!</p>
+        </div>
       </div>
     {% endif %}
   </div>
 
-  <!-- Browse Tasks Button -->
-  <div class="mb-4">
-    <a href="{{ url_for('browse_tasks') }}" class="btn btn-primary btn-lg">
-      <i class="bi bi-search"></i> Browse Available Tasks
-    </a>
-  </div>
 </div>
 
-<!-- CUSTOM STYLES -->
+<!-- MODERN DASHBOARD STYLES -->
 <style>
-  .portfolio-quick-access {
-    animation: slideIn 0.5s ease-in-out;
+  /* Stat cards hover effect */
+  .stat-card-modern {
+    transition: all var(--transition-base);
+    cursor: pointer;
   }
 
-  @keyframes slideIn {
+  .stat-card-modern:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: var(--shadow-2xl) !important;
+  }
+
+  /* Task cards hover */
+  .task-card-modern {
+    transition: all var(--transition-base);
+  }
+
+  .task-card-modern:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg) !important;
+  }
+
+  /* Portfolio CTA card hover */
+  .portfolio-cta-card .card {
+    transition: all var(--transition-base);
+  }
+
+  .portfolio-cta-card .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px rgba(102, 126, 234, 0.4) !important;
+  }
+
+  /* Welcome header animation */
+  .welcome-header {
+    animation: fadeInUp 0.6s ease-out;
+  }
+
+  @keyframes fadeInUp {
     from {
       opacity: 0;
-      transform: translateY(-20px);
+      transform: translateY(20px);
     }
     to {
       opacity: 1;
@@ -284,41 +575,81 @@ Removed modal popup, replaced with direct navigation to edit_portfolio page
     }
   }
 
-  .dashboard-title {
-    font-size: 2.5rem;
-    font-weight: bold;
-    color: #333;
+  /* Empty state hover */
+  .empty-state-card {
+    transition: all var(--transition-base);
   }
 
-  .dashboard-subtitle {
-    font-size: 1.1rem;
-    color: #666;
+  .empty-state-card:hover {
+    border-color: var(--primary-color) !important;
+    background: rgba(0, 255, 136, 0.02);
   }
 
-  .stat-box {
-    background: white;
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    border: 1px solid #e0e0e0;
+  /* Section titles */
+  .section-title {
+    font-weight: 700;
+    letter-spacing: -0.5px;
   }
 
-  .stat-value {
-    font-size: 2.5rem;
-    font-weight: bold;
-    margin-bottom: 10px;
+  /* Smooth badge animations */
+  .badge {
+    transition: all var(--transition-fast);
   }
 
-  .stat-active { color: #007bff; }
-  .stat-pending { color: #ffc107; }
-  .stat-completed { color: #28a745; }
-  .stat-rating { color: #e91e63; }
+  /* Rating display */
+  .rating-display {
+    transition: all var(--transition-base);
+  }
 
-  .stat-label {
-    font-size: 0.9rem;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .rating-display:hover .stars-large {
+    transform: scale(1.1);
+  }
+
+  .stars-large {
+    transition: transform var(--transition-base);
+  }
+
+  /* Stagger animation for stat cards */
+  .stat-card-modern:nth-child(1) {
+    animation: slideInUp 0.5s ease-out 0.1s both;
+  }
+
+  .stat-card-modern:nth-child(2) {
+    animation: slideInUp 0.5s ease-out 0.2s both;
+  }
+
+  .stat-card-modern:nth-child(3) {
+    animation: slideInUp 0.5s ease-out 0.3s both;
+  }
+
+  .stat-card-modern:nth-child(4) {
+    animation: slideInUp 0.5s ease-out 0.4s both;
+  }
+
+  @keyframes slideInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .dashboard-welcome {
+      font-size: 1.75rem !important;
+    }
+
+    .stat-value-modern {
+      font-size: 2rem !important;
+    }
+
+    .portfolio-cta-card .col-md-4 {
+      margin-top: 1rem;
+    }
   }
 </style>
 

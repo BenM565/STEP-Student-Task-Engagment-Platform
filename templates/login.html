@@ -6,6 +6,16 @@ Markup, content, and final structure were reviewed, adapted, and implemented
 independently for the STEP Student Task Engagement Platform.
 -->
 {% extends "base.html" %}
+
+{% block extra_css %}
+<script>
+  // Add animated background marker to body
+  document.addEventListener('DOMContentLoaded', function() {
+    document.body.setAttribute('data-animated-bg', '');
+  });
+</script>
+{% endblock %}
+
 {% block content %}
 
 {# Render login form (email + password) and link to registration #}
@@ -13,14 +23,14 @@ independently for the STEP Student Task Engagement Platform.
 
 <div class="row justify-content-center mt-5">
   <div class="col-md-5">
-    <div class="card border-0 shadow">
+    <div class="card glass-card border-0 shadow-xl">
       <div class="card-body p-5">
-        <h3 class="card-title text-center mb-4">Log in</h3>
+        <h3 class="card-title text-center mb-4" style="color: var(--text-light);">Log in</h3>
 
         <form method="post" action="{{ url_for('login') }}" autocomplete="off">
           <!-- Email field -->
           <div class="mb-3">
-            <label for="email" class="form-label fw-semibold">Email</label>
+            <label for="email" class="form-label fw-semibold" style="color: var(--text-light);">Email</label>
             <input
               id="email"
               name="email"
@@ -34,7 +44,7 @@ independently for the STEP Student Task Engagement Platform.
 
           <!-- Password field -->
           <div class="mb-4">
-            <label for="password" class="form-label fw-semibold">Password</label>
+            <label for="password" class="form-label fw-semibold" style="color: var(--text-light);">Password</label>
             <input
               id="password"
               name="password"
@@ -52,12 +62,12 @@ independently for the STEP Student Task Engagement Platform.
           </div>
         </form>
 
-        <hr>
+        <hr style="border-color: rgba(255, 255, 255, 0.2);">
 
         <!-- Registration link -->
         <div class="text-center">
-          <p class="mb-0 text-muted">
-            No account? <a href="{{ url_for('register') }}" class="text-decoration-none fw-semibold">Create one</a>
+          <p class="mb-0" style="color: rgba(255, 255, 255, 0.8);">
+            No account? <a href="{{ url_for('register') }}" class="text-decoration-none fw-semibold" style="color: var(--primary-color);">Create one</a>
           </p>
         </div>
       </div>
