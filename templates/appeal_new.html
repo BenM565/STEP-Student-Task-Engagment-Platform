@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block page_title %}Submit Rating Appeal{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0" style="border-radius: var(--radius-xl);">
+        <div class="card-body p-4">
+          <!-- Header -->
+          <div class="mb-4">
+            <h2 class="mb-2">
+              <i class="bi bi-flag-fill text-warning me-2"></i>Appeal Rating
+            </h2>
+            <p class="text-muted">
+              Task: <strong>{{ application.task.title }}</strong>
+            </p>
+          </div>
+
+          <!-- Existing Appeal Notice -->
+          {% if existing_appeal %}
+            {% if existing_appeal.status == 'pending' %}
+              <div class="alert alert-info">
+                <h5 class="mb-2"><i class="bi bi-clock-history me-2"></i>Appeal Pending</h5>
+                <p class="mb-2">You submitted an appeal on {{ existing_appeal.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                <p class="mb-2"><strong>Your reason:</strong></p>
+                <p class="mb-0" style="white-space: pre-wrap;">{{ existing_appeal.reason }}</p>
+              </div>
+              <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+              </a>
+            {% elif existing_appeal.status == 'approved' %}
+              <div class="alert alert-success">
+                <h5 class="mb-2"><i class="bi bi-check-circle-fill me-2"></i>Appeal Approved</h5>
+                <p class="mb-2">Resolved on {{ existing_appeal.resolved_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                {% if existing_appeal.admin_note %}
+                  <p class="mb-2"><strong>Admin note:</strong></p>
+                  <p class="mb-0" style="white-space: pre-wrap;">{{ existing_appeal.admin_note }}</p>
+                {% endif %}
+              </div>
+              <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+              </a>
+            {% elif existing_appeal.status == 'denied' %}
+              <div class="alert alert-danger">
+                <h5 class="mb-2"><i class="bi bi-x-circle-fill me-2"></i>Appeal Denied</h5>
+                <p class="mb-2">Resolved on {{ existing_appeal.resolved_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                {% if existing_appeal.admin_note %}
+                  <p class="mb-2"><strong>Admin note:</strong></p>
+                  <p class="mb-0" style="white-space: pre-wrap;">{{ existing_appeal.admin_note }}</p>
+                {% endif %}
+              </div>
+              <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+              </a>
+            {% endif %}
+
+          {% else %}
+            <!-- Appeal Form -->
+            <div class="alert alert-warning mb-4">
+              <h6 class="mb-2"><i class="bi bi-info-circle me-1"></i>Before Submitting an Appeal</h6>
+              <p class="small mb-1">Appeals should be used when you believe:</p>
+              <ul class="small mb-0">
+                <li>The rating doesn't accurately reflect your work quality</li>
+                <li>There were extenuating circumstances affecting your performance</li>
+                <li>A technical issue prevented timely completion</li>
+                <li>The company's feedback was unfair or inaccurate</li>
+              </ul>
+            </div>
+
+            <form method="POST" action="{{ url_for('submit_rating_appeal', application_id=application.id) }}">
+              <div class="mb-4">
+                <label class="form-label fw-bold">Reason for Appeal <span class="text-danger">*</span></label>
+                <textarea
+                  name="reason"
+                  class="form-control"
+                  rows="8"
+                  required
+                  placeholder="Please provide a detailed explanation for why you believe this rating should be reviewed. Include any relevant context or evidence (minimum 20 characters)."
+                  style="resize: vertical;"
+                ></textarea>
+                <div class="form-text">Minimum 20 characters. Be specific and professional.</div>
+              </div>
+
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-warning">
+                  <i class="bi bi-send-fill me-1"></i>Submit Appeal
+                </button>
+                <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+              </div>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block page_title %}Rating Appeals • Admin{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+  <div class="mb-4">
+    <h2 class="mb-1">
+      <i class="bi bi-flag-fill text-warning me-2"></i>Rating Appeals
+    </h2>
+    <p class="text-muted">Review and resolve student rating appeals</p>
+  </div>
+
+  {% if appeals %}
+    {% for appeal in appeals %}
+      <div class="card mb-3 shadow-sm border-0" style="border-radius: var(--radius-lg); {% if appeal.status == 'pending' %}border-left: 4px solid var(--warm-orange);{% endif %}">
+        <div class="card-body p-4">
+          <div class="row">
+            <!-- Student & Task Info -->
+            <div class="col-md-8 mb-3">
+              <div class="d-flex align-items-start gap-2 mb-2">
+                <h5 class="mb-0">{{ appeal.student.name }}</h5>
+                <span class="badge {{ 'bg-warning' if appeal.status == 'pending' else ('bg-success' if appeal.status == 'approved' else 'bg-danger') }}">
+                  {{ appeal.status|title }}
+                </span>
+              </div>
+
+              <div class="small text-muted mb-3">
+                <i class="bi bi-briefcase me-1"></i>Task: <strong>{{ appeal.application.task.title }}</strong>
+                <br>
+                <i class="bi bi-calendar me-1"></i>Submitted: {{ appeal.created_at.strftime('%Y-%m-%d %H:%M') }}
+                {% if appeal.resolved_at %}
+                  <br>
+                  <i class="bi bi-check-circle me-1"></i>Resolved: {{ appeal.resolved_at.strftime('%Y-%m-%d %H:%M') }}
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <div class="fw-bold mb-1">Student's Reason:</div>
+                <div class="p-3 bg-light rounded" style="white-space: pre-wrap; border-radius: var(--radius-md);">{{ appeal.reason }}</div>
+              </div>
+
+              {% if appeal.admin_note %}
+                <div class="mb-3">
+                  <div class="fw-bold mb-1">Admin Note:</div>
+                  <div class="p-3 bg-light rounded" style="white-space: pre-wrap; border-radius: var(--radius-md);">{{ appeal.admin_note }}</div>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Application Details -->
+            <div class="col-md-4">
+              <div class="card bg-light border-0">
+                <div class="card-body p-3">
+                  <h6 class="mb-3">Application Details</h6>
+
+                  {% set app = appeal.application %}
+                  {% set reviews = app.student.applications|selectattr('status', 'equalto', 'completed')|list %}
+                  {% set review_objs = [] %}
+                  {% for a in reviews %}
+                    {% set r = a.id %}
+                    {% for review in current_user.applications if review.application_id == a.id %}
+                      {% set _ = review_objs.append(review) %}
+                    {% endfor %}
+                  {% endfor %}
+
+                  <div class="small mb-2">
+                    <strong>Status:</strong> {{ app.status|title }}
+                  </div>
+                  <div class="small mb-2">
+                    <strong>Review Status:</strong>
+                    <span class="badge {{ 'bg-success' if app.review_status == 'approved' else 'bg-warning' }}">
+                      {{ app.review_status|replace('_', ' ')|title if app.review_status else 'N/A' }}
+                    </span>
+                  </div>
+                  <div class="small mb-2">
+                    <strong>On-Time:</strong> {{ 'Yes' if app.completed_at and app.deadline_at and app.completed_at <= app.deadline_at else 'No' }}
+                  </div>
+                  <div class="small mb-2">
+                    <strong>Change Requests:</strong> {{ app.change_requests_count or 0 }}
+                  </div>
+                  <div class="small mb-2">
+                    <strong>First-Pass:</strong> {{ 'Yes' if app.first_pass_success else 'No' }}
+                  </div>
+
+                  <hr class="my-2">
+
+                  <div class="small">
+                    <strong>Flags:</strong>
+                    <div class="mt-1">
+                      {% if app.rating_locked %}
+                        <span class="badge bg-secondary">Rating Locked</span>
+                      {% endif %}
+                      {% if app.rating_overridden %}
+                        <span class="badge bg-info">Rating Overridden</span>
+                      {% endif %}
+                      {% if not app.rating_locked and not app.rating_overridden %}
+                        <span class="text-muted">None</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Admin Actions (only for pending) -->
+          {% if appeal.status == 'pending' %}
+            <hr>
+            <form method="POST" action="{{ url_for('admin_resolve_appeal', appeal_id=appeal.id) }}">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">Decision</label>
+                  <select name="decision" class="form-select" required>
+                    <option value="">Select decision...</option>
+                    <option value="approved">Approve Appeal</option>
+                    <option value="denied">Deny Appeal</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">Options</label>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="lock_rating" id="lock-{{ appeal.id }}">
+                    <label class="form-check-label" for="lock-{{ appeal.id }}">
+                      Lock rating (prevent future changes)
+                    </label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="override_rating" id="override-{{ appeal.id }}">
+                    <label class="form-check-label" for="override-{{ appeal.id }}">
+                      Mark as overridden (admin adjusted)
+                    </label>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label fw-bold">Admin Note (optional)</label>
+                  <textarea name="admin_note" class="form-control" rows="3" placeholder="Provide feedback to the student..."></textarea>
+                </div>
+
+                <div class="col-12">
+                  <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-circle-fill me-1"></i>Resolve Appeal
+                  </button>
+                </div>
+              </div>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+
+  {% else %}
+    <div class="alert alert-info">
+      <i class="bi bi-info-circle me-2"></i>No appeals to review.
+    </div>
+  {% endif %}
+
+  <div class="mt-4">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Back to Admin Dashboard
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -2720,6 +2720,87 @@ html[data-theme="dark"] .command-palette-input-container {
     background: rgba(0, 113, 227, 0.2);
     color: var(--text-primary);
 }
+:root {
+    /* Hero / CTA sections */
+    --gradient-hero:      linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+
+    /* Dashboard stat card gradients — restrained palette */
+    --gradient-stat-1:    linear-gradient(135deg, #0f3460 0%, #0071e3 100%);  /* navy→blue   */
+    --gradient-stat-2:    linear-gradient(135deg, #1d1d1f 0%, #3a3a3c 100%);  /* charcoal    */
+    --gradient-stat-3:    linear-gradient(135deg, #0071e3 0%, #005bb5 100%);  /* blue deep   */
+    --gradient-stat-4:    linear-gradient(135deg, #d97706 0%, #b45309 100%);  /* amber       */
+
+    /* Utility gradients */
+    --gradient-primary:   linear-gradient(135deg, #0071e3 0%, #005bb5 100%);
+    --gradient-secondary: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+    --gradient-tertiary:  linear-gradient(135deg, #00cc6f 0%, #009952 100%);
+    --gradient-dark-bg:   linear-gradient(135deg, #1a1a2e 0%, #0f3460 50%, #1a1a2e 100%);
+}
+
+
+/* ============================================
+   2. LOGO — wordmark only, no SVG star
+   Targets the .navbar-logo anchor in base.html
+   ============================================ */
+.navbar-logo {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #ffffff;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+/* Hide the SVG star mark inside the navbar logo */
+.navbar-logo .brand-svg {
+    display: none !important;
+}
+
+/* Landing page brand also — hide SVG star */
+.navbar-brand .brand-logo svg,
+.landing-navbar .navbar-brand svg {
+    display: none !important;
+}
+
+.landing-navbar .navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+
+
+/* ============================================
+   3. DASHBOARD STAT CARDS
+   Apply the new gradient vars to the 4 stat
+   cards on the student dashboard.
+   If you use inline styles in the template,
+   update them to reference these vars instead:
+
+     style="background: var(--gradient-stat-1)"
+     style="background: var(--gradient-stat-2)"
+     style="background: var(--gradient-stat-3)"
+     style="background: var(--gradient-stat-4)"
+   ============================================ */
+
+
+/* ============================================
+   4. MINOR TYPOGRAPHY REFINEMENTS
+   Slightly tighter letter-spacing on headings,
+   matching Apple's system.
+   ============================================ */
+h1 { letter-spacing: -0.025em; }
+h2 { letter-spacing: -0.022em; }
+h3 { letter-spacing: -0.020em; }
+
+body {
+    letter-spacing: -0.011em;
+}
+
+
+/* ============================================
+   END OF PATCH
+   ============================================ */
 
 /* ============================================
    END OF SLEEK ENHANCEMENTS
