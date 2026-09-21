@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Something went wrong · STEP{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+  <div class="display-1 fw-bold">500</div>
+  <h4 class="mb-2">Something went wrong on our side</h4>
+  <p class="text-muted mb-4">Nothing you did caused this. Please try again in a moment.</p>
+  <a href="{{ url_for('index') }}" class="btn btn-primary">Go home</a>
+</div>
+{% endblock %}

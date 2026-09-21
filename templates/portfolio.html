@@ -68,10 +68,21 @@ HTML Structure:
                                 </span>
                             {% endif %}
 
-                            <!-- University affiliation if available -->
+                            {% if student.headline %}
+                                <p style="color: #333; margin-top: 10px; font-size: 18px; font-weight: 500;">
+                                    {{ student.headline }}
+                                </p>
+                            {% endif %}
+
+                            <!-- University and course if available -->
                             {% if student.university %}
-                                <p style="color: #666; margin-top: 8px; font-size: 14px;">
+                                <p style="color: #666; margin-top: 8px; margin-bottom: 0; font-size: 14px;">
                                     📚 {{ student.university.name }}
+                                </p>
+                            {% endif %}
+                            {% if student.degree or student.year %}
+                                <p style="color: #666; margin-top: 4px; font-size: 14px;">
+                                    🎓 {{ student.degree or '' }}{% if student.year %}{% if student.degree %} · {% endif %}Year {{ student.year }}{% endif %}
                                 </p>
                             {% endif %}
                         </div>
@@ -90,7 +101,7 @@ HTML Structure:
                         <div class="col-md-4">
                             <div style="background-color: #f0f0f0; padding: 15px; border-radius: 8px;">
                                 <div style="font-size: 28px; font-weight: bold; color: #0066cc;">
-                                    {{ "%.1f"|format(student.trust_score) }}%
+                                    {{ "%.1f"|format(student.trust_score or 0) }}%
                                 </div>
                                 <small style="color: #666;">Trust Score</small>
                             </div>
@@ -120,6 +131,23 @@ HTML Structure:
             </div>
         </div>
     </div>
+
+
+    <!-- ABOUT SECTION -->
+    {% if student.bio %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #0066cc; color: white;">
+                    <h5 style="margin: 0;">👤 About</h5>
+                </div>
+                <div class="card-body">
+                    <p style="color: #555; white-space: pre-wrap; margin: 0;">{{ student.bio }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
 
     <!-- SKILLS SECTION -->
@@ -172,6 +200,50 @@ HTML Structure:
     {% endif %}
 
 
+    <!-- WORK EXPERIENCE SECTION -->
+    {% if student.experience %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #0066cc; color: white;">
+                    <h5 style="margin: 0;">💼 Experience</h5>
+                </div>
+                <div class="card-body">
+                    {% for exp in student.experience %}
+                        <div style="padding: 10px 0;{% if not loop.last %} border-bottom: 1px solid #eee;{% endif %}">
+                            <strong>{{ exp.job_title or 'Role' }}</strong>{% if exp.company %} · {{ exp.company }}{% endif %}
+                            {% if exp.start_date %}
+                                <div class="text-muted small">{{ exp.start_date }} – {{ exp.end_date or 'Present' }}</div>
+                            {% endif %}
+                            {% if exp.description %}
+                                <p style="color: #555; margin: 6px 0 0;">{{ exp.description }}</p>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
+    <!-- PROJECT SUMMARY (free text from the profile) -->
+    {% if student.projects %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #0066cc; color: white;">
+                    <h5 style="margin: 0;">🧩 Projects &amp; Experience Summary</h5>
+                </div>
+                <div class="card-body">
+                    <p style="color: #555; white-space: pre-wrap; margin: 0;">{{ student.projects }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
     <!-- PORTFOLIO PROJECTS SECTION -->
     <!-- ============================= -->
     <!-- Grid display of completed projects and portfolio items -->
@@ -199,18 +271,27 @@ HTML Structure:
                                             <h5 class="card-title">
                                                 {{ media.title or "Portfolio Item" }}
                                             </h5>
+                                            {% if media.description %}
+                                                <p style="color: #555; font-size: 14px;">{{ media.description }}</p>
+                                            {% endif %}
                                             <small class="text-muted d-block mb-3">
-                                                Uploaded: {{ media.uploaded_at.strftime('%b %d, %Y') }}
+                                                Uploaded: {{ media.uploaded_at.strftime('%b %d, %Y') if media.uploaded_at else '' }}
                                             </small>
                                         </div>
 
                                         <!-- View/Download link -->
-                                        <div class="card-footer" style="background-color: #f8f9fa;">
+                                        <div class="card-footer d-flex gap-2" style="background-color: #f8f9fa;">
                                             <a href="{{ url_for('static', filename='uploads/' + media.filename) }}"
                                                target="_blank"
-                                               class="btn btn-outline-primary btn-sm w-100">
+                                               class="btn btn-outline-primary btn-sm flex-fill">
                                                 📄 View
                                             </a>
+                                            {% if media.link %}
+                                                <a href="{{ media.link }}" target="_blank" rel="noopener"
+                                                   class="btn btn-outline-secondary btn-sm flex-fill">
+                                                    🔗 Link
+                                                </a>
+                                            {% endif %}
                                         </div>
                                     </div>
                                 </div>

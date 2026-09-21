@@ -6,9 +6,14 @@
   <div class="row justify-content-center">
     <div class="col-lg-8">
 
-      <div class="mb-4">
-        <h2 class="mb-2">Raise a Dispute</h2>
-        <p class="text-muted">Have an issue? Send it to our admin team.</p>
+      <div class="mb-4 d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+          <h2 class="mb-2">Raise a Dispute</h2>
+          <p class="text-muted mb-0">Have an issue? Send it to our admin team.</p>
+        </div>
+        <a href="{{ url_for('dispute_new') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-link-45deg me-1"></i>Link a dispute to a task
+        </a>
       </div>
 
       <!-- FORM -->
@@ -47,11 +52,16 @@
           <div class="list-group list-group-flush">
             {% for d in disputes %}
               <div class="list-group-item p-3">
-                {% set lines = d.message.split('\n') %}
-                <h6 class="fw-bold">{{ lines[0] }}</h6>
-                <p class="text-muted small">{{ d.message[:80] }}...</p>
-                <span class="badge bg-warning">{{ d.status|upper }}</span>
-                <small class="text-muted ms-2">{{ d.created_at.strftime('%b %d') if d.created_at else '' }}</small>
+                <h6 class="fw-bold">{{ d.title or (d.message or '').split('\n')[0] }}</h6>
+                <p class="text-muted small mb-2">{{ (d.message or '')[:160] }}{% if d.message and d.message|length > 160 %}...{% endif %}</p>
+                {% if d.task %}<div class="small text-muted mb-2">Task: {{ d.task.title }}</div>{% endif %}
+                {% if d.resolution_note %}
+                  <div class="alert alert-info py-2 px-3 mb-2 small"><strong>Admin response:</strong> {{ d.resolution_note }}</div>
+                {% endif %}
+                <span class="badge {% if d.status == 'resolved' %}bg-success{% elif d.status == 'in_review' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                  {{ (d.status or 'open')|replace('_', ' ')|upper }}
+                </span>
+                <small class="text-muted ms-2">{{ d.created_at.strftime('%b %d, %Y') if d.created_at else '' }}</small>
               </div>
             {% endfor %}
           </div>

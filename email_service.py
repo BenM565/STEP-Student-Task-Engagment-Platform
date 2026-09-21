@@ -1,725 +1,814 @@
 """
-Email Service Module for STEP Platform
-======================================
-Handles all email notifications for task updates, applications, and submissions.
+Email service for STEP
+======================
 
-This module provides an abstraction layer for sending emails to users. It currently
-uses Flask-Mail (to be configured) and can be extended to use third-party services
-like SendGrid, AWS SES, or Mailgun.
+Provider-agnostic transactional email with three interchangeable back-ends,
+selected with one environment variable:
 
-Dependencies required in requirements.txt:
-- Flask-Mail==0.9.1
+    EMAIL_PROVIDER=resend   HTTPS API (api.resend.com). Recommended on Render:
+                            free web services block outbound SMTP ports
+                            25/465/587, HTTPS on 443 is unaffected.
+    EMAIL_PROVIDER=smtp     Any SMTP relay: a Gmail app password for local
+                            development, SendGrid / Mailgun / Brevo SMTP, or an
+                            on-premises relay inside an enterprise network.
+    EMAIL_PROVIDER=console  Logs the message instead of sending. Default when
+                            nothing is configured, so the app always boots and
+                            no request ever fails because of email.
 
-Configuration required in .env:
-- MAIL_SERVER=smtp.gmail.com
-- MAIL_PORT=587
-- MAIL_USE_TLS=true
-- MAIL_USERNAME=your_email@gmail.com
-- MAIL_PASSWORD=your_app_password
-- MAIL_DEFAULT_SENDER=noreply@step-platform.com
+Design rules
+------------
+* Nothing is hardcoded. Every credential, sender and base URL comes from the
+  environment (see .env.example). Secrets never live in source control.
+* Sending is non-blocking. Messages go to a small thread pool so a slow mail
+  server never slows a request. EMAIL_SYNC=1 sends inline (used by tests).
+* Sending never raises into a request. Failures are logged with enough detail
+  to debug; the calling code carries on.
+* All user-supplied text is HTML-escaped before it is placed in a template.
+* Every message is built by one `_compose()` layout, so all emails share the
+  same look, plain-text fallback, and footer.
+
+Public API (names are stable; app.py and notifications.py depend on them)
+-------------------------------------------------------------------------
+    send_email(...)                             low-level send
+    send_welcome_email(user)
+    send_task_posted_notification(task, company, student, matched_skills)
+    send_application_received_notification(application, task, company)
+    send_application_accepted_notification(application, task, student)
+    send_application_rejected_notification(application, task, student, reason)
+    send_work_submitted_notification(application, task, company)
+    send_work_approved_notification(application, task, student)
+    send_change_requested_notification(application, task, student, feedback)
+    send_dispute_notification(dispute, admin_email)
+    get_provider() / reset_provider() / describe_provider()
 """
 
+from __future__ import annotations
+
+import html
+import json
+import logging
 import os
-from datetime import datetime
-from typing import List, Optional
-from functools import wraps
-from threading import Thread
+import re
+import smtplib
+import ssl
+import threading
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from email.message import EmailMessage
+from email.utils import parseaddr
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-# Flask imports for mail functionality
-from flask import current_app
-from flask_mail import Mail, Message
+from flask import current_app, has_app_context
 
-# Initialize Flask-Mail (configured in app.py)
-mail = Mail()
+log = logging.getLogger("step.email")
+
+DEFAULT_APP_URL = "http://localhost:5000"
+DEFAULT_SENDER = "STEP Platform <no-reply@step.local>"
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-def async_send_email(app, msg):
+# ============================================================================
+# Message + provider abstraction
+# ============================================================================
+
+class EmailDeliveryError(RuntimeError):
+    """Raised by a provider when the upstream service rejects a message."""
+
+
+@dataclass
+class OutboundEmail:
+    to: str
+    subject: str
+    html: str
+    text: str
+    sender: str
+    reply_to: Optional[str] = None
+    tags: Dict[str, str] = field(default_factory=dict)
+
+
+class EmailProvider:
+    """Interface every back-end implements. `send` raises on failure."""
+
+    name = "base"
+
+    def send(self, message: OutboundEmail) -> None:  # pragma: no cover - interface
+        raise NotImplementedError
+
+
+class ConsoleProvider(EmailProvider):
+    """Logs messages and keeps the last few in memory (handy for tests/demos)."""
+
+    name = "console"
+    KEEP = 200
+
+    def __init__(self) -> None:
+        self.sent: List[OutboundEmail] = []
+
+    def send(self, message: OutboundEmail) -> None:
+        self.sent.append(message)
+        if len(self.sent) > self.KEEP:
+            del self.sent[: len(self.sent) - self.KEEP]
+        log.info("[email:console] to=%s subject=%r", message.to, message.subject)
+        print(f"[STEP email] to={message.to} subject={message.subject!r}")
+        print(message.text.strip())
+
+
+class SMTPProvider(EmailProvider):
+    """Standard-library SMTP client. Works with any relay that speaks STARTTLS/SSL."""
+
+    name = "smtp"
+
+    def __init__(
+        self,
+        host: str,
+        port: int = 587,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        use_tls: bool = True,
+        use_ssl: bool = False,
+        timeout: int = 20,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.use_tls = use_tls
+        self.use_ssl = use_ssl
+        self.timeout = timeout
+
+    def send(self, message: OutboundEmail) -> None:
+        em = EmailMessage()
+        em["From"] = message.sender
+        em["To"] = message.to
+        em["Subject"] = message.subject
+        if message.reply_to:
+            em["Reply-To"] = message.reply_to
+        em.set_content(message.text)
+        em.add_alternative(message.html, subtype="html")
+
+        context = ssl.create_default_context()
+        if self.use_ssl:
+            with smtplib.SMTP_SSL(self.host, self.port, timeout=self.timeout, context=context) as smtp:
+                if self.username:
+                    smtp.login(self.username, self.password or "")
+                smtp.send_message(em)
+            return
+
+        with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as smtp:
+            smtp.ehlo()
+            if self.use_tls:
+                smtp.starttls(context=context)
+                smtp.ehlo()
+            if self.username:
+                smtp.login(self.username, self.password or "")
+            smtp.send_message(em)
+
+
+class ResendProvider(EmailProvider):
+    """Resend HTTPS API (https://resend.com/docs/api-reference/emails/send-email).
+
+    Uses only the standard library so no extra dependency is needed.
     """
-    ASYNCHRONOUS EMAIL SENDER
-    ========================
-    Sends email in a background thread to prevent blocking the main request.
 
-    Args:
-        app: Flask application context
-        msg: Flask-Mail Message object to send
+    name = "resend"
+    ENDPOINT = "https://api.resend.com/emails"
 
-    Returns:
-        None (runs in background thread)
+    def __init__(self, api_key: str, timeout: int = 20) -> None:
+        self.api_key = api_key
+        self.timeout = timeout
 
-    Usage:
-        This is called internally by send_email() and should not be used directly.
-    """
-    with app.app_context():
-        mail.send(msg)
+    @staticmethod
+    def _tag(value: str) -> str:
+        # Resend tags allow ASCII letters, numbers, underscores and dashes only
+        return re.sub(r"[^A-Za-z0-9_-]", "_", str(value))[:256] or "none"
+
+    def send(self, message: OutboundEmail) -> None:
+        payload: Dict[str, object] = {
+            "from": message.sender,
+            "to": [message.to],
+            "subject": message.subject,
+            "html": message.html,
+            "text": message.text,
+        }
+        if message.reply_to:
+            payload["reply_to"] = message.reply_to
+        if message.tags:
+            payload["tags"] = [
+                {"name": self._tag(k), "value": self._tag(v)} for k, v in message.tags.items()
+            ]
+
+        request = urllib.request.Request(
+            self.ENDPOINT,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "STEP-Platform/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                body = json.loads(response.read().decode("utf-8") or "{}")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            raise EmailDeliveryError(f"Resend rejected the message (HTTP {exc.code}): {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise EmailDeliveryError(f"Could not reach Resend: {exc.reason}") from exc
+
+        log.info("[email:resend] accepted id=%s to=%s", body.get("id"), message.to)
 
 
-def send_email(
-        recipient_email: str,
-        subject: str,
-        html_body: str,
-        text_body: Optional[str] = None,
-        sender: Optional[str] = None
-) -> bool:
-    """
-    SEND EMAIL WRAPPER
-    ==================
-    Thread-safe email sender with error handling and logging.
+# ============================================================================
+# Provider selection (environment driven, built once, thread-safe)
+# ============================================================================
 
-    Args:
-        recipient_email (str): Email address of recipient
-        subject (str): Email subject line
-        html_body (str): HTML content of email body
-        text_body (str, optional): Plain text fallback for email body
-        sender (str, optional): Override default sender email
+_provider: Optional[EmailProvider] = None
+_provider_lock = threading.Lock()
 
-    Returns:
-        bool: True if email queued successfully, False on error
 
-    Raises:
-        Catches all exceptions and returns False without raising
+def _env(name: str, default: str = "") -> str:
+    return (os.getenv(name) or default).strip()
 
-    Example:
-        >>> send_email(
-        ...     recipient_email="student@example.com",
-        ...     subject="Your application was accepted!",
-        ...     html_body="<p>Congratulations on being selected!</p>"
-        ... )
-        True
-    """
-    try:
-        # Use default sender from config if not specified
-        if sender is None:
-            sender = current_app.config.get(
-                "MAIL_DEFAULT_SENDER",
-                "noreply@step-platform.com"
-            )
 
-        # Create Message object with both HTML and text versions for compatibility
-        msg = Message(
-            subject=subject,
-            recipients=[recipient_email],
-            html=html_body,
-            body=text_body or "Please view this email in HTML format.",
-            sender=sender
+def _env_bool(name: str, default: bool) -> bool:
+    value = _env(name).lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
+def _build_provider() -> EmailProvider:
+    choice = _env("EMAIL_PROVIDER").lower()
+    if not choice:
+        if _env("RESEND_API_KEY"):
+            choice = "resend"
+        elif _env("MAIL_SERVER") and _env("MAIL_USERNAME"):
+            choice = "smtp"
+        else:
+            choice = "console"
+
+    if choice == "resend":
+        api_key = _env("RESEND_API_KEY")
+        if not api_key:
+            log.warning("EMAIL_PROVIDER=resend but RESEND_API_KEY is empty; using console provider")
+            return ConsoleProvider()
+        return ResendProvider(api_key)
+
+    if choice == "smtp":
+        host = _env("MAIL_SERVER")
+        if not host:
+            log.warning("EMAIL_PROVIDER=smtp but MAIL_SERVER is empty; using console provider")
+            return ConsoleProvider()
+        try:
+            port = int(_env("MAIL_PORT", "587"))
+        except ValueError:
+            port = 587
+        return SMTPProvider(
+            host=host,
+            port=port,
+            username=_env("MAIL_USERNAME") or None,
+            password=os.getenv("MAIL_PASSWORD") or None,
+            use_tls=_env_bool("MAIL_USE_TLS", True),
+            use_ssl=_env_bool("MAIL_USE_SSL", False),
         )
 
-        # Send asynchronously in background thread to avoid blocking
-        Thread(
-            target=async_send_email,
-            args=(current_app._get_current_object(), msg)
-        ).start()
+    if choice != "console":
+        log.warning("Unknown EMAIL_PROVIDER=%r; using console provider", choice)
+    return ConsoleProvider()
 
+
+def get_provider() -> EmailProvider:
+    """Return the process-wide provider, building it on first use."""
+    global _provider
+    if _provider is None:
+        with _provider_lock:
+            if _provider is None:
+                _provider = _build_provider()
+    return _provider
+
+
+def reset_provider() -> None:
+    """Forget the cached provider so the next send re-reads the environment."""
+    global _provider
+    with _provider_lock:
+        _provider = None
+
+
+def describe_provider() -> str:
+    """One-line description for startup logs (never includes secrets)."""
+    provider = get_provider()
+    if isinstance(provider, ResendProvider):
+        return "resend (HTTPS API)"
+    if isinstance(provider, SMTPProvider):
+        return f"smtp ({provider.host}:{provider.port})"
+    return "console (emails are logged, not delivered)"
+
+
+# ============================================================================
+# Sending
+# ============================================================================
+
+def _worker_count() -> int:
+    try:
+        return max(1, int(_env("EMAIL_WORKERS", "2")))
+    except ValueError:
+        return 2
+
+
+_executor = ThreadPoolExecutor(max_workers=_worker_count(), thread_name_prefix="step-email")
+
+
+def _clean_address(value: Optional[str]) -> str:
+    _, address = parseaddr(value or "")
+    address = address.strip()
+    return address if _EMAIL_RE.match(address) else ""
+
+
+def default_sender() -> str:
+    for name in ("EMAIL_FROM", "MAIL_DEFAULT_SENDER"):
+        value = _env(name)
+        if value:
+            return value
+    username = _env("MAIL_USERNAME")
+    if _clean_address(username):
+        return f"STEP Platform <{username}>"
+    return DEFAULT_SENDER
+
+
+def app_url(path: str = "") -> str:
+    """Absolute URL into the app, from APP_URL (env) or Flask config."""
+    base = _env("APP_URL")
+    if not base and has_app_context():
+        base = (current_app.config.get("APP_URL") or "").strip()
+    base = (base or DEFAULT_APP_URL).rstrip("/")
+    if not path:
+        return base
+    return f"{base}/{path.lstrip('/')}"
+
+
+def _deliver(message: OutboundEmail) -> bool:
+    try:
+        get_provider().send(message)
         return True
-
-    except Exception as e:
-        # Log error but don't raise to prevent breaking application flow
-        print(f"[EmailService] Error sending email to {recipient_email}: {str(e)}")
+    except Exception as exc:  # noqa: BLE001 - never let email break a request
+        log.error("[email] delivery failed to=%s subject=%r: %s", message.to, message.subject, exc)
         return False
 
 
+def send_email(
+    recipient_email: Optional[str],
+    subject: str,
+    html_body: str,
+    text_body: Optional[str] = None,
+    sender: Optional[str] = None,
+    reply_to: Optional[str] = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> bool:
+    """Queue one email. Returns True when accepted for delivery.
+
+    With EMAIL_SYNC=1 the message is sent inline and the return value reflects
+    the real delivery result (used by tests and one-off scripts).
+    """
+    to = _clean_address(recipient_email)
+    if not to:
+        log.warning("[email] skipped %r: no valid recipient (%r)", subject, recipient_email)
+        return False
+
+    message = OutboundEmail(
+        to=to,
+        subject=(subject or "").strip() or "STEP Platform",
+        html=html_body,
+        text=text_body or "Please open this email in an HTML-capable client.",
+        sender=sender or default_sender(),
+        reply_to=reply_to or (_env("EMAIL_REPLY_TO") or None),
+        tags=dict(tags or {}),
+    )
+
+    if _env_bool("EMAIL_SYNC", False):
+        return _deliver(message)
+
+    _executor.submit(_deliver, message)
+    return True
+
+
 # ============================================================================
-# EMAIL TEMPLATES - Notification Event Handlers
+# Shared layout
 # ============================================================================
 
-def send_task_posted_notification(task, company):
-    """
-    TASK POSTED NOTIFICATION
-    ========================
-    Sent to students when a new task matching their skills is posted.
+def _compose(
+    *,
+    title: str,
+    greeting: str,
+    paragraphs: Sequence[str],
+    details: Optional[Iterable[Tuple[str, str]]] = None,
+    cta_label: Optional[str] = None,
+    cta_url: Optional[str] = None,
+    closing: str = "The STEP team",
+) -> Tuple[str, str]:
+    """Build (html, text) for one message. All dynamic text is escaped here."""
+    e = html.escape
+    rows = [(label, str(value)) for label, value in (details or []) if value not in (None, "")]
 
-    Args:
-        task: Task object containing task details
-        company: User object (company) who posted the task
+    html_paragraphs = "".join(
+        f'<p style="margin:0 0 16px;font-size:16px;line-height:1.55;">{e(p)}</p>' for p in paragraphs
+    )
+    html_details = ""
+    if rows:
+        cells = "".join(
+            '<tr>'
+            f'<td style="padding:8px 12px 8px 0;color:#666;font-size:14px;white-space:nowrap;vertical-align:top;">{e(label)}</td>'
+            f'<td style="padding:8px 0;font-size:14px;vertical-align:top;">{e(value)}</td>'
+            '</tr>'
+            for label, value in rows
+        )
+        html_details = (
+            '<table role="presentation" cellpadding="0" cellspacing="0" '
+            'style="border-collapse:collapse;margin:8px 0 20px;border-top:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;">'
+            f"{cells}</table>"
+        )
+    html_cta = ""
+    if cta_label and cta_url:
+        html_cta = (
+            f'<p style="margin:8px 0 24px;"><a href="{e(cta_url)}" '
+            'style="display:inline-block;background:#111;color:#fff;padding:12px 22px;'
+            'text-decoration:none;font-weight:600;font-size:15px;border-radius:4px;">'
+            f"{e(cta_label)}</a></p>"
+        )
 
-    Returns:
-        bool: Success status of email send
+    html_body = f"""<!doctype html>
+<html lang="en">
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111;">
+  <div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+    <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#666;margin-bottom:16px;">STEP &middot; Student Task Engagement Platform</div>
+    <div style="background:#fff;border:1px solid #e5e5e5;padding:32px;">
+      <h1 style="font-size:22px;line-height:1.3;margin:0 0 20px;font-weight:600;">{e(title)}</h1>
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.55;">{e(greeting)}</p>
+      {html_paragraphs}
+      {html_details}
+      {html_cta}
+      <p style="margin:0;color:#666;font-size:14px;">{e(closing)}</p>
+    </div>
+    <div style="font-size:12px;color:#888;margin-top:16px;line-height:1.5;">
+      You are receiving this because you have a STEP account. <a href="{e(app_url())}" style="color:#888;">{e(app_url())}</a>
+    </div>
+  </div>
+</body>
+</html>"""
 
-    Use Case:
-        Called after company creates new task. Emails are sent to students
-        whose skills match task tags.
-    """
-    subject = f"New Task Alert: {task.title}"
+    text_lines: List[str] = [title, "", greeting, ""]
+    for p in paragraphs:
+        text_lines += [p, ""]
+    if rows:
+        text_lines += [f"{label}: {value}" for label, value in rows]
+        text_lines.append("")
+    if cta_label and cta_url:
+        text_lines += [f"{cta_label}: {cta_url}", ""]
+    text_lines += [closing, "", f"STEP Platform - {app_url()}"]
+    return html_body, "\n".join(text_lines)
 
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
 
-                <h2 style="color: #0066cc;">New Task Posted!</h2>
+# ============================================================================
+# Small formatting helpers
+# ============================================================================
 
-                <p>Hi there,</p>
+def _first_name(user) -> str:
+    name = (getattr(user, "name", "") or "").strip()
+    return name.split(" ")[0] if name else "there"
 
-                <p>A new task matching your skills has been posted:</p>
 
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
-                    <p><strong>Posted by:</strong> {company.name}</p>
-                    <p><strong>Description:</strong></p>
-                    <p>{task.description[:200]}...</p>
-                    <p><strong>Payment Type:</strong> {task.payment_type.capitalize()}</p>
-                    {f'<p><strong>Fixed Price:</strong> €{task.fixed_price}</p>' if task.fixed_price else ''}
-                    {f'<p><strong>Hourly Rate:</strong> €{task.hourly_rate}/hr</p>' if task.hourly_rate else ''}
-                </div>
+def _display_name(user, fallback: str = "the company") -> str:
+    return (getattr(user, "name", "") or "").strip() or fallback
 
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/task/{task.id}" 
-                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        View Task
-                    </a>
-                </p>
 
-                <p>Best regards,<br>STEP Platform Team</p>
+def _money(value) -> str:
+    try:
+        return f"€{float(value):,.2f}"
+    except (TypeError, ValueError):
+        return ""
 
-            </div>
-        </body>
-    </html>
-    """
 
-    text_body = f"""
-    New Task Posted: {task.title}
+def _task_payment(task) -> str:
+    payment_type = (getattr(task, "payment_type", "") or "fixed").lower()
+    if payment_type == "hourly" and getattr(task, "hourly_rate", None):
+        return f"{_money(task.hourly_rate)} per hour"
+    if getattr(task, "fixed_price", None):
+        return f"{_money(task.fixed_price)} fixed price"
+    return "To be agreed"
 
-    Posted by: {company.name}
 
-    Description: {task.description[:200]}...
+def _hours(task) -> str:
+    hours = getattr(task, "estimated_hours", None)
+    return f"{hours} hours" if hours else ""
 
-    Payment Type: {task.payment_type.capitalize()}
 
-    View the full task at: {current_app.config.get('APP_URL', 'http://localhost:5000')}/task/{task.id}
-    """
+def _when(value) -> str:
+    return value.strftime("%d %b %Y, %H:%M") if value else ""
 
+
+def _platform_fee_percent() -> float:
+    if has_app_context():
+        try:
+            return float(current_app.config.get("PLATFORM_FEE_PERCENT", 10))
+        except (TypeError, ValueError):
+            pass
+    try:
+        return float(_env("PLATFORM_FEE_PERCENT", "10"))
+    except ValueError:
+        return 10.0
+
+
+# ============================================================================
+# Transactional messages
+# ============================================================================
+
+_ONBOARDING = {
+    "student": (
+        [
+            "Your account is ready. STEP connects you with real, paid tasks from companies "
+            "so you can build a portfolio of verified work while you study.",
+            "Start by adding your skills and a project or two. Companies see this when they "
+            "review applications, and it powers the task matches we email you about.",
+        ],
+        "Complete your portfolio",
+        "/student/portfolio/edit",
+    ),
+    "company": (
+        [
+            "Your account is ready. Post a task, and STEP alerts students whose skills match, "
+            "collects applications, and handles selection, submission and review in one place.",
+            "A clear description and a few skill tags get the best matches.",
+        ],
+        "Post your first task",
+        "/add-task",
+    ),
+    "university": (
+        [
+            "Your account is ready. Your dashboard shows how students from your institution "
+            "are engaging with industry tasks: applications, selections, completions and ratings.",
+        ],
+        "Open your dashboard",
+        "/university/dashboard",
+    ),
+    "admin": (
+        [
+            "Your administrator account is ready. From the admin console you can verify "
+            "students, review disputes and oversee platform activity.",
+        ],
+        "Open the admin console",
+        "/admin",
+    ),
+}
+
+
+def send_welcome_email(user) -> bool:
+    """Welcome message sent once, immediately after successful registration."""
+    role = (getattr(user, "role", "") or "student").lower()
+    paragraphs, cta_label, cta_path = _ONBOARDING.get(role, _ONBOARDING["student"])
+    html_body, text_body = _compose(
+        title="Welcome to STEP",
+        greeting=f"Hi {_first_name(user)},",
+        paragraphs=paragraphs,
+        details=[("Account", user.email), ("Role", role.capitalize())],
+        cta_label=cta_label,
+        cta_url=app_url(cta_path),
+    )
     return send_email(
-        recipient_email=None,  # This should be filtered by skill matching in calling function
-        subject=subject,
-        html_body=html_body,
-        text_body=text_body
+        user.email,
+        f"Welcome to STEP, {_first_name(user)}",
+        html_body,
+        text_body,
+        tags={"event": "welcome", "role": role},
     )
 
 
-def send_application_received_notification(application, task, company):
-    """
-    APPLICATION RECEIVED NOTIFICATION
-    ==================================
-    Sent to company when student applies for their task.
+def send_task_posted_notification(task, company, student, matched_skills: Optional[Sequence[str]] = None) -> bool:
+    """Alert one student that a task matching their skills was just posted."""
+    description = (getattr(task, "description", "") or "").strip()
+    if len(description) > 240:
+        description = description[:237].rstrip() + "..."
+    matched = ", ".join(matched_skills) if matched_skills else ""
 
-    Args:
-        application: Application object linking student to task
-        task: Task object that was applied for
-        company: User object (company) receiving the notification
+    paragraphs = [
+        f"{_display_name(company)} just posted a task that matches your profile.",
+    ]
+    if description:
+        paragraphs.append(description)
 
-    Returns:
-        bool: Success status of email send
-
-    Use Case:
-        Called when student submits application. Notifies company immediately.
-    """
-    subject = f"New Application for: {task.title}"
-
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
-
-                <h2 style="color: #0066cc;">New Application Received!</h2>
-
-                <p>Hi {company.name},</p>
-
-                <p>A student has applied for your task:</p>
-
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
-                    <p><strong>Applicant:</strong> {application.student.name}</p>
-                    <p><strong>Student Email:</strong> {application.student.email}</p>
-                    <p><strong>Student Skills:</strong> {application.student.skills or 'Not specified'}</p>
-                    <p><strong>Application Date:</strong> {application.created_at.strftime('%Y-%m-%d %H:%M')}</p>
-                </div>
-
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/company/applicants" 
-                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        Review Application
-                    </a>
-                </p>
-
-                <p>Best regards,<br>STEP Platform Team</p>
-
-            </div>
-        </body>
-    </html>
-    """
-
-    text_body = f"""
-    New Application Received!
-
-    Task: {task.title}
-    Applicant: {application.student.name}
-    Student Email: {application.student.email}
-
-    Review the application at: {current_app.config.get('APP_URL', 'http://localhost:5000')}/company/applicants
-    """
-
+    html_body, text_body = _compose(
+        title=task.title,
+        greeting=f"Hi {_first_name(student)},",
+        paragraphs=paragraphs,
+        details=[
+            ("Posted by", _display_name(company)),
+            ("Skills matched", matched),
+            ("Estimated effort", _hours(task)),
+            ("Payment", _task_payment(task)),
+        ],
+        cta_label="View task and apply",
+        cta_url=app_url(f"/task/{task.id}"),
+    )
     return send_email(
-        recipient_email=company.email,
-        subject=subject,
-        html_body=html_body,
-        text_body=text_body
+        student.email,
+        f"New task matches your skills: {task.title}",
+        html_body,
+        text_body,
+        tags={"event": "task_posted", "task": str(task.id)},
     )
 
 
-def send_application_accepted_notification(application, task, student):
-    """
-    APPLICATION ACCEPTED NOTIFICATION
-    ==================================
-    Sent to student when company accepts their application.
-
-    Args:
-        application: Application object that was accepted
-        task: Task object for the application
-        student: User object (student) receiving acceptance
-
-    Returns:
-        bool: Success status of email send
-
-    Use Case:
-        Called when company marks application as 'selected'. Student gets
-        details about next steps and payment information.
-    """
-    subject = f"Congratulations! Your Application was Accepted - {task.title}"
-
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
-
-                <h2 style="color: #28a745;">Congratulations! 🎉</h2>
-
-                <p>Hi {student.name},</p>
-
-                <p>We're excited to tell you that your application has been accepted!</p>
-
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
-                    <p><strong>Company:</strong> {task.company.name}</p>
-                    <p><strong>Payment Type:</strong> {task.payment_type.capitalize()}</p>
-                    {f'<p><strong>Payment Amount:</strong> €{task.fixed_price}</p>' if task.fixed_price else ''}
-                    {f'<p><strong>Hourly Rate:</strong> €{task.hourly_rate}/hr</p>' if task.hourly_rate else ''}
-                    {f'<p><strong>Estimated Duration:</strong> {task.estimated_hours} hours</p>' if task.estimated_hours else ''}
-                </div>
-
-                <h3>Next Steps:</h3>
-                <ol>
-                    <li>Review the task details and acceptance email from the company</li>
-                    <li>Begin working on the task according to the company's requirements</li>
-                    <li>Submit your completed work through the platform</li>
-                    <li>Payment will be processed once the company approves your submission</li>
-                </ol>
-
-                <p><strong>Note:</strong> Payment funds are held securely in escrow until the company approves your work.</p>
-
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/student/tasks" 
-                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        View Your Tasks
-                    </a>
-                </p>
-
-                <p>Best regards,<br>STEP Platform Team</p>
-
-            </div>
-        </body>
-    </html>
-    """
-
-    text_body = f"""
-    Congratulations! Your Application was Accepted!
-
-    Task: {task.title}
-    Company: {task.company.name}
-    Payment Type: {task.payment_type.capitalize()}
-    Payment Amount: €{task.fixed_price if task.fixed_price else 'TBD'}
-
-    View your task at: {current_app.config.get('APP_URL', 'http://localhost:5000')}/student/tasks
-    """
-
+def send_application_received_notification(application, task, company) -> bool:
+    """Tell the company a student has applied."""
+    student = application.student
+    html_body, text_body = _compose(
+        title="New application received",
+        greeting=f"Hi {_first_name(company)},",
+        paragraphs=[f"{_display_name(student, 'A student')} has applied for \"{task.title}\"."],
+        details=[
+            ("Applicant", _display_name(student, "")),
+            ("Skills", getattr(student, "skills", "") or "Not specified"),
+            ("Applied", _when(getattr(application, "created_at", None))),
+        ],
+        cta_label="Review applicants",
+        cta_url=app_url(f"/company/applicants/{task.id}"),
+    )
     return send_email(
-        recipient_email=student.email,
-        subject=subject,
-        html_body=html_body,
-        text_body=text_body
+        company.email,
+        f"New application: {task.title}",
+        html_body,
+        text_body,
+        tags={"event": "application_received", "task": str(task.id)},
     )
 
 
-def send_application_rejected_notification(application, task, student, reason: str = ""):
-    """
-    APPLICATION REJECTED NOTIFICATION
-    ==================================
-    Sent to student when company rejects their application.
-
-    Args:
-        application: Application object that was rejected
-        task: Task object for the application
-        student: User object (student) receiving rejection
-        reason (str, optional): Company's reason for rejection
-
-    Returns:
-        bool: Success status of email send
-
-    Use Case:
-        Called when company marks application as rejected. Encourages student
-        to apply to other tasks or improve skills.
-    """
-    subject = f"Application Status Update - {task.title}"
-
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
-
-                <h2 style="color: #ff6b6b;">Application Update</h2>
-
-                <p>Hi {student.name},</p>
-
-                <p>Thank you for applying to the following task:</p>
-
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
-                    <p><strong>Company:</strong> {task.company.name}</p>
-                    <p>Unfortunately, your application was not selected at this time.</p>
-                    {f'<p><strong>Company Feedback:</strong> {reason}</p>' if reason else ''}
-                </div>
-
-                <p>Don't be discouraged! Keep developing your skills and apply to other tasks on our platform. 
-                Each application is a learning opportunity.</p>
-
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/browse-tasks" 
-                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        Browse More Tasks
-                    </a>
-                </p>
-
-                <p>Best regards,<br>STEP Platform Team</p>
-
-            </div>
-        </body>
-    </html>
-    """
-
-    text_body = f"""
-    Application Status Update
-
-    Task: {task.title}
-    Company: {task.company.name}
-    Status: Not Selected
-
-    {f'Feedback: {reason}' if reason else ''}
-
-    Browse more tasks at: {current_app.config.get('APP_URL', 'http://localhost:5000')}/browse-tasks
-    """
-
+def send_application_accepted_notification(application, task, student) -> bool:
+    """Selected: the company chose this student for the task."""
+    company = getattr(task, "company", None)
+    html_body, text_body = _compose(
+        title="You have been selected",
+        greeting=f"Hi {_first_name(student)},",
+        paragraphs=[
+            f"{_display_name(company)} has selected you for \"{task.title}\".",
+            "Open the task to confirm, review the requirements, and upload your work when it is ready. "
+            "The company reviews your submission on the platform and you are notified of the outcome.",
+        ],
+        details=[
+            ("Company", _display_name(company)),
+            ("Estimated effort", _hours(task)),
+            ("Payment", _task_payment(task)),
+        ],
+        cta_label="Open the task",
+        cta_url=app_url(f"/task/{task.id}"),
+    )
     return send_email(
-        recipient_email=student.email,
-        subject=subject,
-        html_body=html_body,
-        text_body=text_body
+        student.email,
+        f"You've been selected: {task.title}",
+        html_body,
+        text_body,
+        tags={"event": "application_selected", "task": str(task.id)},
     )
 
 
-def send_work_submitted_notification(application, task, company):
-    """
-    WORK SUBMITTED NOTIFICATION
-    ============================
-    Sent to company when student submits completed work.
-
-    Args:
-        application: Application object with submitted work
-        task: Task object
-        company: User object (company) to notify
-
-    Returns:
-        bool: Success status of email send
-
-    Use Case:
-        Called when student marks work as complete and submits for review.
-        Company needs to review and approve/request changes.
-    """
-    subject = f"Work Submitted for Review - {task.title}"
-
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
-
-                <h2 style="color: #0066cc;">Work Submitted for Review</h2>
-
-                <p>Hi {company.name},</p>
-
-                <p>The student working on your task has submitted their work for review:</p>
-
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
-                    <p><strong>Student:</strong> {application.student.name}</p>
-                    <p><strong>Submitted:</strong> {application.submitted_at.strftime('%Y-%m-%d %H:%M') if application.submitted_at else 'N/A'}</p>
-                </div>
-
-                <p>Please review the submitted work and either approve it or request changes from the student.</p>
-
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/company/applicants" 
-                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        Review Submission
-                    </a>
-                </p>
-
-                <p><strong>Important:</strong> Payment is held in escrow until you approve the work.</p>
-
-                <p>Best regards,<br>STEP Platform Team</p>
-
-            </div>
-        </body>
-    </html>
-    """
-
-    text_body = f"""
-    Work Submitted for Review
-
-    Task: {task.title}
-    Student: {application.student.name}
-    Submitted: {application.submitted_at.strftime('%Y-%m-%d %H:%M') if application.submitted_at else 'N/A'}
-
-    Review the submission at: {current_app.config.get('APP_URL', 'http://localhost:5000')}/company/applicants
-    """
-
+def send_application_rejected_notification(application, task, student, reason: str = "") -> bool:
+    """Not selected: the company chose someone else, or declined the application."""
+    company = getattr(task, "company", None)
+    paragraphs = [
+        f"Thank you for applying for \"{task.title}\" with {_display_name(company)}. "
+        "On this occasion another applicant was selected.",
+        "Every application is seen by a real company, and new tasks are posted regularly. "
+        "Keeping your skills and portfolio up to date improves your match on the next one.",
+    ]
+    details = [("Company", _display_name(company))]
+    if reason:
+        details.append(("Feedback", reason))
+    html_body, text_body = _compose(
+        title="Update on your application",
+        greeting=f"Hi {_first_name(student)},",
+        paragraphs=paragraphs,
+        details=details,
+        cta_label="Browse open tasks",
+        cta_url=app_url("/browse-tasks"),
+    )
     return send_email(
-        recipient_email=company.email,
-        subject=subject,
-        html_body=html_body,
-        text_body=text_body
+        student.email,
+        f"Update on your application: {task.title}",
+        html_body,
+        text_body,
+        tags={"event": "application_not_selected", "task": str(task.id)},
     )
 
 
-def send_work_approved_notification(application, task, student):
-    """
-    WORK APPROVED NOTIFICATION
-    ===========================
-    Sent to student when company approves their submitted work.
-
-    Args:
-        application: Application object with approved work
-        task: Task object
-        student: User object (student) receiving approval
-
-    Returns:
-        bool: Success status of email send
-
-    Use Case:
-        Called when company marks work as approved. Student's payment
-        is released from escrow. Includes payment details.
-    """
-    subject = f"Your Work Has Been Approved! - {task.title}"
-
-    # Calculate payment amounts
-    platform_fee = task.fixed_price * 0.10 if task.fixed_price else 0
-    student_payment = (task.fixed_price or 0) - platform_fee
-
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
-
-                <h2 style="color: #28a745;">Excellent Work! 👏</h2>
-
-                <p>Hi {student.name},</p>
-
-                <p>Great news! Your submitted work has been approved by {task.company.name}.</p>
-
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
-                    <p><strong>Completed:</strong> {application.completed_at.strftime('%Y-%m-%d %H:%M') if application.completed_at else 'N/A'}</p>
-                    <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">APPROVED</span></p>
-                </div>
-
-                <h3>Payment Details:</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 10px; text-align: left;"><strong>Total Amount:</strong></td>
-                        <td style="padding: 10px; text-align: right;">€{task.fixed_price:.2f}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 10px; text-align: left;"><strong>Platform Fee (10%):</strong></td>
-                        <td style="padding: 10px; text-align: right;">-€{platform_fee:.2f}</td>
-                    </tr>
-                    <tr style="background-color: #f0f0f0;">
-                        <td style="padding: 10px; text-align: left;"><strong>Amount to Your Account:</strong></td>
-                        <td style="padding: 10px; text-align: right; font-weight: bold; color: #28a745;">€{student_payment:.2f}</td>
-                    </tr>
-                </table>
-
-                <p style="margin-top: 20px;">Your payment has been released from escrow and processed. 
-                You should see the funds in your account within 1-2 business days.</p>
-
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/student/dashboard" 
-                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        View Dashboard
-                    </a>
-                </p>
-
-                <p>Congratulations on another successful project!<br>STEP Platform Team</p>
-
-            </div>
-        </body>
-    </html>
-    """
-
-    text_body = f"""
-    Your Work Has Been Approved!
-
-    Task: {task.title}
-    Company: {task.company.name}
-    Status: APPROVED
-
-    Payment Details:
-    Total Amount: €{task.fixed_price:.2f}
-    Platform Fee: €{platform_fee:.2f}
-    Your Amount: €{student_payment:.2f}
-
-    View dashboard at: {current_app.config.get('APP_URL', 'http://localhost:5000')}/student/dashboard
-    """
-
+def send_work_submitted_notification(application, task, company) -> bool:
+    """Tell the company the selected student has uploaded work for review."""
+    student = application.student
+    html_body, text_body = _compose(
+        title="Work submitted for review",
+        greeting=f"Hi {_first_name(company)},",
+        paragraphs=[
+            f"{_display_name(student, 'The student')} has submitted work for \"{task.title}\". "
+            "Please review it and either approve it or request changes.",
+        ],
+        details=[
+            ("Student", _display_name(student, "")),
+            ("Submitted", _when(getattr(application, "submitted_at", None))),
+        ],
+        cta_label="Review submission",
+        cta_url=app_url(f"/company/applicants/{task.id}"),
+    )
     return send_email(
-        recipient_email=student.email,
-        subject=subject,
-        html_body=html_body,
-        text_body=text_body
+        company.email,
+        f"Work submitted: {task.title}",
+        html_body,
+        text_body,
+        tags={"event": "work_submitted", "task": str(task.id)},
     )
 
 
-def send_change_requested_notification(application, task, student, feedback: str = ""):
-    """
-    CHANGE REQUESTED NOTIFICATION
-    =============================
-    Sent to student when company requests changes to submitted work.
-
-    Args:
-        application: Application object with requested changes
-        task: Task object
-        student: User object (student) receiving request
-        feedback (str, optional): Company's feedback on required changes
-
-    Returns:
-        bool: Success status of email send
-
-    Use Case:
-        Called when company marks work as needing changes. Student needs
-        to revise and resubmit. Payment remains in escrow.
-    """
-    subject = f"Changes Requested - {task.title}"
-
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
-
-                <h2 style="color: #ff9800;">Changes Requested</h2>
-
-                <p>Hi {student.name},</p>
-
-                <p>{task.company.name} has reviewed your work and would like you to make some changes:</p>
-
-                <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ff9800;">
-                    <h3 style="margin-top: 0; color: #333;">{task.title}</h3>
-                    {f'<p><strong>Feedback:</strong></p><p>{feedback}</p>' if feedback else '<p>Please review the detailed feedback on the platform.</p>'}
-                </div>
-
-                <p>Please make the requested changes and resubmit your work. Your payment will be processed once 
-                the company approves the revised work.</p>
-
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/student/tasks" 
-                       style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        Resubmit Work
-                    </a>
-                </p>
-
-                <p>Best regards,<br>STEP Platform Team</p>
-
-            </div>
-        </body>
-    </html>
-    """
-
-    text_body = f"""
-    Changes Requested
-
-    Task: {task.title}
-    Company: {task.company.name}
-
-    {f'Feedback:\n{feedback}' if feedback else 'Please review the detailed feedback on the platform.'}
-
-    Resubmit your work at: {current_app.config.get('APP_URL', 'http://localhost:5000')}/student/tasks
-    """
-
+def send_work_approved_notification(application, task, student) -> bool:
+    """Tell the student their work was approved (with the payment breakdown when priced)."""
+    company = getattr(task, "company", None)
+    details = [
+        ("Company", _display_name(company)),
+        ("Completed", _when(getattr(application, "completed_at", None))),
+    ]
+    # Only describe a payment that actually happened (Stripe escrow captured)
+    if getattr(task, "fixed_price", None) and getattr(application, "payment_status", "") == "captured":
+        fee_pct = _platform_fee_percent()
+        fee = float(task.fixed_price) * fee_pct / 100.0
+        details += [
+            ("Task value", _money(task.fixed_price)),
+            (f"Platform fee ({fee_pct:g}%)", f"-{_money(fee)}"),
+            ("Paid to you", _money(float(task.fixed_price) - fee)),
+        ]
+    html_body, text_body = _compose(
+        title="Your work has been approved",
+        greeting=f"Hi {_first_name(student)},",
+        paragraphs=[
+            f"{_display_name(company)} approved your submission for \"{task.title}\". "
+            "This task now appears as completed on your portfolio.",
+        ],
+        details=details,
+        cta_label="View your dashboard",
+        cta_url=app_url("/student"),
+    )
     return send_email(
-        recipient_email=student.email,
-        subject=subject,
-        html_body=html_body,
-        text_body=text_body
+        student.email,
+        f"Approved: {task.title}",
+        html_body,
+        text_body,
+        tags={"event": "work_approved", "task": str(task.id)},
     )
 
 
-def send_dispute_notification(dispute, admin_email: str):
-    """
-    DISPUTE FILED NOTIFICATION
-    ===========================
-    Sent to admin when a dispute is raised by user.
-
-    Args:
-        dispute: Dispute object that was created
-        admin_email (str): Email address of admin to notify
-
-    Returns:
-        bool: Success status of email send
-
-    Use Case:
-        Called when student or company files a dispute. Admin needs to
-        review and potentially intervene.
-    """
-    subject = f"New Dispute Reported - {dispute.raised_by_user.name}"
-
-    html_body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px;">
-
-                <h2 style="color: #d32f2f;">New Dispute Filed</h2>
-
-                <p>A new dispute has been filed and requires admin review:</p>
-
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <p><strong>Reported by:</strong> {dispute.raised_by_user.name} ({dispute.raised_by_user.email})</p>
-                    {f'<p><strong>Against:</strong> {dispute.against_user.name}</p>' if dispute.against_user else ''}
-                    {f'<p><strong>Related Task:</strong> {dispute.task.title if dispute.task else "N/A"}</p>' if dispute.task else ''}
-                    <p><strong>Issue:</strong></p>
-                    <p>{dispute.message}</p>
-                    <p><strong>Severity:</strong> {dispute.severity}/5</p>
-                </div>
-
-                <p>
-                    <a href="{current_app.config.get('APP_URL', 'http://localhost:5000')}/admin/disputes" 
-                       style="background-color: #d32f2f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                        Review Dispute
-                    </a>
-                </p>
-
-                <p>STEP Platform Admin System</p>
-
-            </div>
-        </body>
-    </html>
-    """
-
+def send_change_requested_notification(application, task, student, feedback: str = "") -> bool:
+    """Tell the student the company wants revisions."""
+    company = getattr(task, "company", None)
+    html_body, text_body = _compose(
+        title="Changes requested",
+        greeting=f"Hi {_first_name(student)},",
+        paragraphs=[
+            f"{_display_name(company)} has reviewed your work on \"{task.title}\" and asked for changes. "
+            "Please update your submission and upload it again.",
+        ],
+        details=[("Feedback", feedback or "See the task page for details")],
+        cta_label="Open the task",
+        cta_url=app_url(f"/task/{task.id}"),
+    )
     return send_email(
-        recipient_email=admin_email,
-        subject=subject,
-        html_body=html_body
+        student.email,
+        f"Changes requested: {task.title}",
+        html_body,
+        text_body,
+        tags={"event": "changes_requested", "task": str(task.id)},
+    )
+
+
+def send_dispute_notification(dispute, admin_email: str) -> bool:
+    """Tell an administrator a dispute needs review."""
+    raised_by = getattr(dispute, "raised_by_user", None)
+    against = getattr(dispute, "against_user", None)
+    task = getattr(dispute, "task", None)
+    html_body, text_body = _compose(
+        title="New dispute filed",
+        greeting="Hello,",
+        paragraphs=["A dispute has been filed and needs an administrator's review."],
+        details=[
+            ("Raised by", _display_name(raised_by, "")),
+            ("Against", _display_name(against, "") if against else ""),
+            ("Task", getattr(task, "title", "") if task else ""),
+            ("Severity", f"{getattr(dispute, 'severity', 1)}/5"),
+            ("Message", (getattr(dispute, "message", "") or "")[:500]),
+        ],
+        cta_label="Review dispute",
+        cta_url=app_url("/admin-disputes"),
+        closing="STEP administration",
+    )
+    return send_email(
+        admin_email,
+        f"Dispute #{getattr(dispute, 'id', '')} needs review",
+        html_body,
+        text_body,
+        tags={"event": "dispute_filed"},
     )

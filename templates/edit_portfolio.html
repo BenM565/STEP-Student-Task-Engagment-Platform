@@ -9,11 +9,10 @@ URL: /student/portfolio/edit
 
 Features:
 - Skills management (add/edit comma-separated skills)
+- About section (headline, bio, course, year, university)
 - Portfolio projects (add with title, description, links, files)
 - Work experience (job title, company, dates)
-- About section (headline, bio, university)
-- View existing projects with delete option
-- Real-time preview of how portfolio looks
+- Live preview of how the portfolio looks, with delete controls
 -->
 
 {% extends "base.html" %}
@@ -23,14 +22,19 @@ Features:
   <!-- PAGE HEADER -->
   <div class="row mb-5">
     <div class="col-12">
-      <div class="d-flex justify-content-between align-items-center mb-4">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
         <div>
-          <h1 class="mb-2">✨ Build Your Portfolio</h1>
-          <p class="text-muted">Showcase your skills, projects, and achievements to attract companies</p>
+          <h1 class="mb-2">Build Your Portfolio</h1>
+          <p class="text-muted mb-0">Showcase your skills, projects, and achievements to attract companies</p>
         </div>
-        <a href="{{ url_for('portfolio', student_id=current_user.id) }}" class="btn btn-primary btn-lg" target="_blank">
-          <i class="bi bi-eye"></i> View Public Portfolio
-        </a>
+        <div class="d-flex gap-2 flex-wrap">
+          <a href="{{ url_for('edit_profile') }}" class="btn btn-outline-secondary btn-lg">
+            <i class="bi bi-gear"></i> Account settings
+          </a>
+          <a href="{{ url_for('portfolio', student_id=current_user.id) }}" class="btn btn-primary btn-lg" target="_blank">
+            <i class="bi bi-eye"></i> View Public Portfolio
+          </a>
+        </div>
       </div>
     </div>
   </div>
@@ -54,7 +58,7 @@ Features:
               <div class="mb-3">
                 <label class="form-label">Your Skills (comma-separated)</label>
                 <textarea class="form-control" name="skills" rows="3" placeholder="e.g., Python, React, Data Analysis, Project Management">{{ current_user.skills or '' }}</textarea>
-                <small class="form-text text-muted">Tip: Add technical and soft skills to attract relevant tasks</small>
+                <small class="form-text text-muted">Tip: these tags decide which new tasks you're alerted about by email</small>
               </div>
               <button type="submit" class="btn btn-primary btn-sm">
                 <i class="bi bi-check-circle"></i> Save Skills
@@ -80,9 +84,30 @@ Features:
                 <textarea class="form-control" name="bio" rows="4" placeholder="Tell us about yourself, your interests, and what you're looking for...">{{ current_user.bio or '' }}</textarea>
               </div>
 
+              <div class="row">
+                <div class="col-md-8 mb-3">
+                  <label class="form-label">Course / Degree</label>
+                  <input type="text" class="form-control" name="degree" placeholder="e.g., BSc Computer Science" value="{{ current_user.degree or '' }}">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">Year</label>
+                  <select class="form-select" name="year">
+                    <option value="">Select...</option>
+                    {% for y in ['1', '2', '3', '4', 'Masters', 'PhD', 'Graduate'] %}
+                      <option value="{{ y }}" {% if current_user.year == y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+
               <div class="mb-3">
                 <label class="form-label">University</label>
-                <input type="text" class="form-control" name="university" placeholder="e.g., University College Dublin" value="{{ current_user.university or '' }}">
+                <select class="form-select" name="university">
+                  <option value="">Not linked</option>
+                  {% for uni in universities %}
+                    <option value="{{ uni.id }}" {% if current_user.university_id == uni.id %}selected{% endif %}>{{ uni.name }}</option>
+                  {% endfor %}
+                </select>
               </div>
 
               <button type="submit" class="btn btn-primary btn-sm">
@@ -93,7 +118,7 @@ Features:
 
           <hr>
 
-         <!-- PROJECTS SECTION -->
+          <!-- PROJECTS SECTION -->
           <div class="mb-5">
             <h6 class="mb-3">
               <i class="bi bi-folder-fill"></i> Add Project
@@ -116,32 +141,60 @@ Features:
 
               <div class="mb-3">
                 <label class="form-label">Upload Project Image/File</label>
-                <input type="file" class="form-control" name="project_file" accept="image/*,.pdf,.doc,.docx">
+                <input type="file" class="form-control" name="project_file" accept="image/*,.pdf,.doc,.docx" required>
+                <small class="form-text text-muted">A screenshot, PDF or document that shows the work</small>
               </div>
 
-              <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-success btn-sm">
-                  <i class="bi bi-plus-circle"></i> Add Project
-                </button>
+              <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-plus-circle"></i> Add Project
+              </button>
+            </form>
+          </div>
 
-                <button type="submit" class="btn btn-primary btn-sm">
-                  <i class="bi bi-check-circle"></i> Save Project
+          <hr>
+
+          <!-- LECTURER REFERENCES SECTION -->
+          {% set references = current_user.lecturer_references.all() %}
+          <div class="mb-5">
+            <h6 class="mb-3">
+              <i class="bi bi-person-badge-fill"></i> Lecturer References
+            </h6>
+            {% if references %}
+              <ul class="list-group mb-3">
+                {% for ref in references %}
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>{{ ref.lecturer_name }}</span>
+                    <form method="POST" action="{{ url_for('delete_lecturer_reference', ref_id=ref.id) }}" class="m-0">
+                      <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this reference?')">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+            <form method="POST" action="{{ url_for('add_lecturer_reference') }}">
+              <div class="input-group">
+                <input type="text" class="form-control" name="lecturer_name" maxlength="150" placeholder="e.g., Dr. Jane Murphy, UCC Computer Science" required>
+                <button type="submit" class="btn btn-success">
+                  <i class="bi bi-plus-circle"></i> Add
                 </button>
               </div>
+              <small class="form-text text-muted">A named lecturer companies can trust. Shown on your public portfolio.</small>
             </form>
           </div>
 
           <hr>
 
           <!-- EXPERIENCE SECTION -->
-          <div class="mb-5">
+          <div class="mb-3">
             <h6 class="mb-3">
               <i class="bi bi-briefcase-fill"></i> Work Experience
             </h6>
             <form method="POST" action="{{ url_for('add_experience') }}">
               <div class="mb-3">
                 <label class="form-label">Job Title</label>
-                <input type="text" class="form-control" name="job_title" placeholder="e.g., Junior Developer">
+                <input type="text" class="form-control" name="job_title" placeholder="e.g., Junior Developer" required>
               </div>
 
               <div class="mb-3">
@@ -165,17 +218,15 @@ Features:
                 <textarea class="form-control" name="description" rows="3" placeholder="What did you do? What did you learn?"></textarea>
               </div>
 
-              <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-success btn-sm">
-                  <i class="bi bi-plus-circle"></i> Add Experience
-                </button>
-
-                <button type="submit" class="btn btn-primary btn-sm">
-                  <i class="bi bi-check-circle"></i> Save Experience
-                </button>
-              </div>
+              <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-plus-circle"></i> Add Experience
+              </button>
             </form>
           </div>
+
+        </div>
+      </div>
+    </div>
 
     <!-- PORTFOLIO PREVIEW (RIGHT) -->
     <div class="col-lg-6">
@@ -194,8 +245,11 @@ Features:
               <p class="text-muted text-secondary">Add a headline to stand out</p>
             {% endif %}
 
+            {% if current_user.degree or current_user.year %}
+              <p class="small mb-1"><i class="bi bi-journal-bookmark"></i> {{ current_user.degree or '' }}{% if current_user.year %} (Year {{ current_user.year }}){% endif %}</p>
+            {% endif %}
             {% if current_user.university %}
-              <p class="small"><i class="bi bi-mortarboard"></i> {{ current_user.university }}</p>
+              <p class="small"><i class="bi bi-mortarboard"></i> {{ current_user.university.name }}</p>
             {% endif %}
           </div>
 
@@ -216,7 +270,7 @@ Features:
               <h6>Skills</h6>
               <div class="d-flex flex-wrap gap-2">
                 {% for skill in current_user.skills.split(',') %}
-                  <span class="badge bg-info">{{ skill.strip() }}</span>
+                  {% if skill.strip() %}<span class="badge bg-info">{{ skill.strip() }}</span>{% endif %}
                 {% endfor %}
               </div>
             </div>
@@ -233,10 +287,15 @@ Features:
                     <div class="d-flex justify-content-between align-items-start">
                       <div>
                         <h6 class="mb-1">{{ project.title or 'Project' }}</h6>
-                        <small class="text-muted">{{ project.uploaded_at.strftime('%b %d, %Y') }}</small>
+                        {% if project.description %}<p class="small mb-1">{{ project.description }}</p>{% endif %}
+                        <small class="text-muted">{{ project.uploaded_at.strftime('%b %d, %Y') if project.uploaded_at else '' }}</small>
+                        {% if project.link %}
+                          <a href="{{ project.link }}" target="_blank" class="small ms-2">Link <i class="bi bi-box-arrow-up-right"></i></a>
+                        {% endif %}
+                        <a href="{{ url_for('static', filename='uploads/' ~ project.filename) }}" target="_blank" class="small ms-2">File</a>
                       </div>
                       <form method="POST" action="{{ url_for('delete_portfolio_item', item_id=project.id) }}" style="display:inline;">
-                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this project?')">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this project?')">
                           <i class="bi bi-trash"></i>
                         </button>
                       </form>
@@ -253,11 +312,39 @@ Features:
             <hr>
           {% endif %}
 
+          <!-- PREVIEW: Experience -->
+          {% if current_user.experience %}
+            <div class="mb-4">
+              <h6>Experience ({{ current_user.experience|length }})</h6>
+              <div class="list-group">
+                {% for exp in current_user.experience %}
+                  <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <div>
+                        <h6 class="mb-1">{{ exp.job_title or 'Role' }}{% if exp.company %} &middot; {{ exp.company }}{% endif %}</h6>
+                        <small class="text-muted">
+                          {{ exp.start_date or '' }}{% if exp.start_date %} &ndash; {{ exp.end_date or 'Present' }}{% endif %}
+                        </small>
+                        {% if exp.description %}<p class="small mb-0 mt-1">{{ exp.description }}</p>{% endif %}
+                      </div>
+                      <form method="POST" action="{{ url_for('delete_experience', index=loop.index0) }}" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this experience?')">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+            <hr>
+          {% endif %}
+
           <!-- PREVIEW: Metrics -->
           <div class="row text-center">
             <div class="col-6">
               <small class="text-muted">Trust Score</small>
-              <div class="h5">{{ "%.1f"|format(current_user.trust_score) }}%</div>
+              <div class="h5">{{ "%.1f"|format(current_user.trust_score or 0) }}%</div>
             </div>
             <div class="col-6">
               <small class="text-muted">Completed</small>

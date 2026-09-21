@@ -1,18 +1,92 @@
 {% extends "base.html" %}
+{% block page_title %}My Disputes{% endblock %}
 {% block content %}
-<div class="container">
-  <h2>My Disputes</h2>
-  {% if disputes %}
-    {% for dispute in disputes %}
-      <div class="card mb-2">
-        <div class="card-body">
-          <h5>{{ dispute.title }}</h5>
-          <span class="badge bg-warning">{{ dispute.status }}</span>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <div>
+        <h2 class="mb-1">My Disputes</h2>
+        <p class="text-muted mb-0">Raise an issue with a company or a task. An admin reviews every dispute.</p>
+      </div>
+      <a href="{{ url_for('dispute_new') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-link-45deg me-1"></i>Link a dispute to a task
+      </a>
+    </div>
+
+    <!-- FORM -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-danger text-white">
+        <h5 class="mb-0">Submit New Dispute</h5>
+      </div>
+      <div class="card-body p-4">
+        <form method="POST">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Title</label>
+            <input type="text" name="title" class="form-control" placeholder="e.g., Unpaid for completed work" required maxlength="150">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Type</label>
+            <select name="dispute_type" class="form-select">
+              <option value="">Select...</option>
+              <option value="payment">Payment</option>
+              <option value="communication">Communication</option>
+              <option value="scope">Scope or requirements changed</option>
+              <option value="conduct">Conduct</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Description</label>
+            <textarea name="description" class="form-control" rows="5" placeholder="Provide details..." required></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-danger btn-lg w-100">Submit Dispute</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- LIST -->
+    {% if disputes %}
+      <div class="card shadow-sm">
+        <div class="card-header bg-secondary text-white">
+          <h5 class="mb-0">Your Disputes</h5>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for d in disputes %}
+            <div class="list-group-item p-3">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <h6 class="fw-bold mb-1">{{ d.title or (d.message or '').split('\n')[0] }}</h6>
+                  <p class="text-muted small mb-1" style="white-space: pre-line;">{{ (d.message or '')[:200] }}{% if d.message and d.message|length > 200 %}...{% endif %}</p>
+                  {% if d.task %}<div class="small text-muted">Task: {{ d.task.title }}</div>{% endif %}
+                  {% if d.resolution_note %}
+                    <div class="alert alert-info py-2 px-3 mt-2 mb-0 small"><strong>Admin response:</strong> {{ d.resolution_note }}</div>
+                  {% endif %}
+                </div>
+                <div class="text-end">
+                  <span class="badge {% if d.status == 'resolved' %}bg-success{% elif d.status == 'in_review' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                    {{ (d.status or 'open')|replace('_', ' ')|upper }}
+                  </span>
+                  <div class="small text-muted mt-1">{{ d.created_at.strftime('%b %d, %Y') if d.created_at else '' }}</div>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
         </div>
       </div>
-    {% endfor %}
-  {% else %}
-    <p>No disputes</p>
-  {% endif %}
+    {% else %}
+      <div class="alert alert-light border">No disputes yet.</div>
+    {% endif %}
+
+    <div class="mt-4">
+      <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+    </div>
+
+  </div>
 </div>
+
 {% endblock %}

@@ -78,6 +78,30 @@ def recommend_tasks_for_student(student_id: int, limit: int = 5) -> List[Dict]:
     return scored_tasks[:limit]
 
 
+def match_student_to_task(student, task) -> Tuple[float, List[str]]:
+    """
+    Score how well a student's skills/projects/bio match a task's tags/
+    requirements/description. Combines the comma-separated skill/tag fields
+    with free-text fields (via ai.extract_skill_tags) so prose like a
+    project description or a task's requirements paragraph also counts.
+
+    Returns (similarity 0..1, sorted list of matched skill tags).
+    """
+    from ai import extract_skill_tags
+
+    student_tags = _parse_csv(getattr(student, "skills", None))
+    student_tags |= set(extract_skill_tags(getattr(student, "projects", None)))
+    student_tags |= set(extract_skill_tags(getattr(student, "bio", None)))
+
+    task_tags = _parse_csv(getattr(task, "tags", None))
+    task_tags |= set(extract_skill_tags(getattr(task, "requirements", None)))
+    task_tags |= set(extract_skill_tags(getattr(task, "description", None)))
+
+    similarity = _jaccard_similarity(student_tags, task_tags)
+    matched = sorted(student_tags & task_tags)
+    return similarity, matched
+
+
 def recommend_students_for_task(task_id: int, limit: int = 10) -> List[Dict]:
     from app import db, User, Task, Application
 

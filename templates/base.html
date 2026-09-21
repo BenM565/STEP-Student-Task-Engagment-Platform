@@ -70,10 +70,13 @@ independently for the STEP Student Task Engagement Platform.
             <li><a class="navbar-link" href="{{ url_for('add_task') }}"><i class="bi bi-plus-circle"></i> Post Task</a></li>
           {% elif current_user.role == "admin" %}
             <li><a class="navbar-link" href="{{ url_for('admin_home') }}"><i class="bi bi-shield-lock"></i> Admin Home</a></li>
-            <li><a class="navbar-link" href="{{ url_for('admin_disputes') }}"><i class="bi bi-journal-text"></i> Disputes</a></li>
             <li><a class="navbar-link" href="{{ url_for('admin_users') }}"><i class="bi bi-people"></i> Users</a></li>
+            <li><a class="navbar-link" href="{{ url_for('admin_universities') }}"><i class="bi bi-mortarboard"></i> Universities</a></li>
+            <li><a class="navbar-link" href="{{ url_for('admin_disputes') }}"><i class="bi bi-journal-text"></i> Disputes</a></li>
+            <li><a class="navbar-link" href="{{ url_for('admin_appeals') }}"><i class="bi bi-flag"></i> Appeals</a></li>
           {% elif current_user.role == "university" %}
-            <li><a class="navbar-link" href="{{ url_for('university_dashboard') }}"><i class="bi bi-mortarboard"></i> University Dashboard</a></li>
+            <li><a class="navbar-link" href="{{ url_for('university_dashboard') }}"><i class="bi bi-mortarboard"></i> Dashboard</a></li>
+            <li><a class="navbar-link" href="{{ url_for('university_students') }}"><i class="bi bi-people"></i> Students</a></li>
           {% endif %}
 
           <!-- Profile Dropdown (authenticated users) -->
@@ -107,7 +110,8 @@ independently for the STEP Student Task Engagement Platform.
                 </li>
               {% endif %}
 
-              <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person-lines-fill me-2"></i>Profile</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person-lines-fill me-2"></i>{% if current_user.role == "student" %}My portfolio{% else %}Profile{% endif %}</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('edit_profile') }}"><i class="bi bi-gear me-2"></i>Account settings</a></li>
               <li><a class="dropdown-item" href="{{ url_for('disputes_view') }}"><i class="bi bi-exclamation-triangle me-2"></i>Disputes</a></li>
               <li><hr class="dropdown-divider"></li>
               <li>

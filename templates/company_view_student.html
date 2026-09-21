@@ -23,12 +23,22 @@ independently for the STEP Student Task Engagement Platform.
   </div>
 
   <div class="task-meta">
+    {% if student.headline %}<p class="h6">{{ student.headline }}</p>{% endif %}
     <p><strong>Email:</strong> {{ student.email }}</p>
+    <p><strong>University:</strong> {{ student.university.name if student.university else "Not specified" }}
+      {% if student.verified %}<span class="badge bg-success ms-1">Verified</span>{% endif %}</p>
     <p><strong>Degree:</strong> {{ student.degree or "Not specified" }}</p>
     <p><strong>Year:</strong> {{ student.year or "Not specified" }}</p>
+    <p><strong>Grades:</strong> {{ student.grades or "Not specified" }}</p>
     <p><strong>Skills:</strong> {{ student.skills or "Not specified" }}</p>
+    <p><strong>Trust score:</strong> {{ '%.1f'|format(student.trust_score or 0) }}%</p>
     <p><strong>Bio:</strong></p>
     <p class="text-muted">{{ student.bio or "No bio provided." }}</p>
+    {% if student.projects %}
+      <p><strong>Projects:</strong></p>
+      <p class="text-muted" style="white-space: pre-wrap;">{{ student.projects }}</p>
+    {% endif %}
+    <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('portfolio', student_id=student.id) }}">View public portfolio</a>
   </div>
 
   <!-- Ratings Summary -->
@@ -76,6 +86,22 @@ independently for the STEP Student Task Engagement Platform.
   {% endif %}
 </div>
 
+<!-- Work experience -->
+{% if student.experience %}
+<div class="mt-4">
+  <h3>Experience</h3>
+  <div class="list-group">
+    {% for exp in student.experience %}
+      <div class="list-group-item">
+        <div class="fw-semibold">{{ exp.job_title or 'Role' }}{% if exp.company %} · {{ exp.company }}{% endif %}</div>
+        {% if exp.start_date %}<div class="small text-muted">{{ exp.start_date }} – {{ exp.end_date or 'Present' }}</div>{% endif %}
+        {% if exp.description %}<div class="mt-1">{{ exp.description }}</div>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <!-- Projects -->
 <div class="mt-4">
   <h3>Project Media</h3>
@@ -96,7 +122,11 @@ independently for the STEP Student Task Engagement Platform.
             <span class="task-status status-open">{{ media.uploaded_at.strftime("%Y-%m-%d") }}</span>
           </div>
           <div class="task-meta">
+            {% if media.description %}<p class="small">{{ media.description }}</p>{% endif %}
             <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('static', filename='uploads/' + media.filename) }}">View</a>
+            {% if media.link %}
+              <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener" href="{{ media.link }}">Link</a>
+            {% endif %}
           </div>
         </div>
       </div>

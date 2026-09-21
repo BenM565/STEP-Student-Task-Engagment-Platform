@@ -1,18 +1,53 @@
 {% extends "base.html" %}
+{% block page_title %}Disputes{% endblock %}
 {% block content %}
-<div class="container">
-  <h2>My Disputes</h2>
-  {% if disputes %}
-    {% for dispute in disputes %}
-      <div class="card mb-2">
-        <div class="card-body">
-          <h5>{{ dispute.title }}</h5>
-          <span class="badge bg-warning">{{ dispute.status }}</span>
-        </div>
-      </div>
-    {% endfor %}
-  {% else %}
-    <p>No disputes</p>
-  {% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">All disputes</h4>
+  <span class="badge bg-secondary">{{ disputes|length }}</span>
 </div>
+
+{% if disputes %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Title</th>
+          <th>Raised by</th>
+          <th>Against</th>
+          <th>Task</th>
+          <th>Severity</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in disputes %}
+          <tr>
+            <td>{{ d.id }}</td>
+            <td>{{ (d.title or (d.message or '').split('\n')[0])[:60] }}</td>
+            <td>{{ d.raised_by_user.name if d.raised_by_user else '—' }}</td>
+            <td>{{ d.against_user.name if d.against_user else '—' }}</td>
+            <td>{{ d.task.title if d.task else '—' }}</td>
+            <td>
+              <span class="badge {% if d.severity >= 4 %}bg-danger{% elif d.severity >= 3 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ d.severity }}</span>
+            </td>
+            <td>
+              <span class="badge {% if d.status == 'resolved' %}bg-success{% elif d.status == 'in_review' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                {{ (d.status or 'open')|replace('_', ' ')|upper }}
+              </span>
+            </td>
+            <td class="small text-muted">{{ d.created_at.strftime('%Y-%m-%d') if d.created_at else '' }}</td>
+            <td><a href="{{ url_for('admin_dispute_detail', dispute_id=d.id) }}" class="btn btn-sm btn-outline-secondary">Review</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="alert alert-light border">No disputes have been raised.</div>
+{% endif %}
+
 {% endblock %}

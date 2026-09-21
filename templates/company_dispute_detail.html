@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block page_title %}Dispute #{{ dispute.id }}{% endblock %}
+{% block content %}
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <h4 class="mb-0">{{ dispute.title or ('Dispute #' ~ dispute.id) }}</h4>
+          <span class="badge {% if dispute.status == 'resolved' %}bg-success{% elif dispute.status == 'in_review' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+            {{ (dispute.status or 'open')|replace('_', ' ')|upper }}
+          </span>
+        </div>
+
+        <p class="text-muted small mb-3">
+          Raised by {{ dispute.raised_by_user.name if dispute.raised_by_user else 'Unknown' }}
+          on {{ dispute.created_at.strftime('%d %b %Y') if dispute.created_at else 'N/A' }}
+          {% if dispute.task %}
+            &middot; Task: <a href="{{ url_for('task_detail', task_id=dispute.task.id) }}">{{ dispute.task.title }}</a>
+          {% endif %}
+        </p>
+
+        <div class="p-3 bg-light rounded mb-3" style="white-space: pre-line;">{{ dispute.message }}</div>
+
+        {% if dispute.resolution_note %}
+          <div class="alert alert-info mb-3">
+            <div class="fw-semibold mb-1">Admin resolution</div>
+            <div style="white-space: pre-line;">{{ dispute.resolution_note }}</div>
+            {% if dispute.resolved_at %}
+              <div class="small text-muted mt-2">Resolved {{ dispute.resolved_at.strftime('%d %b %Y') }}</div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        <p class="small text-muted mb-0">An admin reviews every dispute. You are notified when its status changes.</p>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('company_disputes') }}" class="btn btn-outline-secondary">Back to disputes</a>
+      <a href="{{ url_for('dispute_new') }}" class="btn btn-outline-secondary">Raise a dispute</a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

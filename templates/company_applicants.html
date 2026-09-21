@@ -39,8 +39,8 @@ independently for the STEP Student Task Engagement Platform.
               <div class="small text-muted">Email: {{ application.student.email }}</div>
             </div>
             <div>
-              <span class="badge {{ 'bg-success' if application.status == 'selected' else ('bg-warning' if application.status == 'pending' else 'bg-secondary') }}">
-                {{ application.status|title }}
+              <span class="badge {{ 'bg-success' if application.status in ['selected', 'in_progress', 'completed'] else ('bg-warning' if application.status == 'pending' else 'bg-secondary') }}">
+                {{ (application.status or 'pending')|replace('_', ' ')|title }}
               </span>
             </div>
           </div>
@@ -197,7 +197,7 @@ independently for the STEP Student Task Engagement Platform.
               </form>
             {% endif %}
 
-            {% if application.status == 'selected' %}
+            {% if application.status in ['selected', 'in_progress'] %}
               <form action="{{ url_for('upload_media', application_id=application.id) }}" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
                 <input type="file" name="file" class="form-control form-control-sm" required>
                 <button type="submit" class="btn btn-primary btn-sm">Upload Company Media</button>

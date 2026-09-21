@@ -23,20 +23,23 @@
 <!-- Search/Filter Form -->
 <form method="get" class="card filter-card p-3 shadow-sm mb-3">
   <div class="row g-2 align-items-end">
-    <div class="input-group">
-  <input type="text" name="q" class="form-control" placeholder="Search tasks..." value="{{ q or '' }}">
-  <button class="btn btn-primary" type="submit">
-    <i class="bi bi-search"></i> Search
-  </button>
-  <button class="btn btn-info" type="button" data-bs-toggle="modal" data-bs-target="#aiSearchModal">
-    <i class="bi bi-sparkles"></i> AI Enhance
-  </button>
-</div>
+    <div class="col-md-6">
+      <label class="form-label">Search</label>
+      <input type="text" name="q" class="form-control" placeholder="Search tasks..." value="{{ q or '' }}">
+    </div>
+    <div class="col-md-2">
       <label class="form-label">Max hours</label>
       <input type="number" class="form-control" name="hours_max" min="1" placeholder="e.g. 10" value="{{ hours_max or '' }}">
     </div>
-    <div class="col-md-2">
-      <button class="btn btn-primary w-100">Search</button>
+    <div class="col-md-4 d-flex gap-2">
+      <button class="btn btn-primary flex-fill" type="submit">
+        <i class="bi bi-search"></i> Search
+      </button>
+      {% if current_user.is_authenticated and current_user.role == 'student' %}
+        <button class="btn btn-info flex-fill" type="submit" name="ai_match" value="1">
+          <i class="bi bi-sparkles"></i> AI Match
+        </button>
+      {% endif %}
     </div>
   </div>
 </form>
@@ -57,6 +60,18 @@
           <a href="{{ url_for('task_detail', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm">View Task</a>
         </div>
 
+        {% if ai_match and task.id in match_scores %}
+          {% set score, matched = match_scores[task.id] %}
+          <div class="mb-2">
+            <span class="badge bg-{{ 'success' if score > 0 else 'secondary' }}">
+              <i class="bi bi-sparkles"></i> {{ (score * 100) | round | int }}% match
+            </span>
+            {% if matched %}
+              <span class="small text-muted ms-1">Matched on: {{ matched | join(', ') }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
         <p class="mb-2">{{ task.description }}</p>
 
         {% if task.tags %}
@@ -69,9 +84,13 @@
 
         <!-- Apply Button - Only for authenticated students -->
         {% if current_user.is_authenticated and current_user.role == 'student' %}
-          <form method="POST" action="{{ url_for('apply_to_task', task_id=task.id) }}">
-            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-          </form>
+          {% if applied_task_ids and task.id in applied_task_ids %}
+            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Applied</span>
+          {% else %}
+            <form method="POST" action="{{ url_for('apply_to_task', task_id=task.id) }}">
+              <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+            </form>
+          {% endif %}
         {% endif %}
       </div>
     </div>

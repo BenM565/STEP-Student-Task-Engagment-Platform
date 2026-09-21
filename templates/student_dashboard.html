@@ -63,16 +63,22 @@ Patched by STEP Design System.
               {% endif %}
             </div>
 
+            {% set media_count = current_user.project_media|length %}
             <div class="checklist-item d-flex align-items-center gap-2 mb-2">
-              <i class="bi bi-circle text-muted" style="font-size: 20px;"></i>
-              <span>Upload portfolio media (projects, work samples)</span>
-              <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+              <i class="bi {{ 'bi-check-circle-fill text-success' if media_count > 0 else 'bi-circle text-muted' }}" style="font-size: 20px;"></i>
+              <span class="{{ 'text-decoration-line-through text-muted' if media_count > 0 else '' }}">Upload portfolio media (projects, work samples)</span>
+              {% if media_count == 0 %}
+                <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+              {% endif %}
             </div>
 
+            {% set ref_count = current_user.lecturer_references.count() %}
             <div class="checklist-item d-flex align-items-center gap-2 mb-2">
-              <i class="bi bi-circle text-muted" style="font-size: 20px;"></i>
-              <span>Add a lecturer reference</span>
-              <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+              <i class="bi {{ 'bi-check-circle-fill text-success' if ref_count > 0 else 'bi-circle text-muted' }}" style="font-size: 20px;"></i>
+              <span class="{{ 'text-decoration-line-through text-muted' if ref_count > 0 else '' }}">Add a lecturer reference</span>
+              {% if ref_count == 0 %}
+                <a href="{{ url_for('edit_portfolio') }}" class="ms-auto btn btn-sm btn-outline-primary">Add</a>
+              {% endif %}
             </div>
 
             {% set app_count = active_apps|length + pending_review_apps|length + past_apps|length %}
@@ -166,7 +172,7 @@ Patched by STEP Design System.
             <div class="stat-icon-bubble mb-3" style="width: 40px; height: 40px; background: rgba(217,119,6,0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
               <i class="bi bi-star" style="font-size: 18px; color: #d97706;"></i>
             </div>
-            <h3 style="font-size: 2.2rem; font-weight: 800; color: var(--text-primary); margin-bottom: 2px; line-height: 1;">{{ rating_avg }}</h3>
+            <h3 style="font-size: 2.2rem; font-weight: 800; color: var(--text-primary); margin-bottom: 2px; line-height: 1;">{{ '%.1f'|format(rating_avg) }}</h3>
             <p style="color: var(--text-muted); font-size: 0.85rem; font-weight: 500; margin: 0;">Avg Rating</p>
           </div>
         </div>
@@ -240,7 +246,7 @@ Patched by STEP Design System.
               {% for i in range(full_stars) %}<i class="bi bi-star-fill"></i>{% endfor %}
               {% for i in range(empty_stars) %}<i class="bi bi-star"></i>{% endfor %}
             </div>
-            <div class="rating-score mb-2" style="font-size: 3rem; font-weight: 800; color: var(--text-primary);">{{ rating_avg }}/5</div>
+            <div class="rating-score mb-2" style="font-size: 3rem; font-weight: 800; color: var(--text-primary);">{{ '%.1f'|format(rating_avg) }}/5</div>
             <p class="text-secondary mb-0">Based on {{ rating_count }} reviews</p>
           </div>
         {% else %}

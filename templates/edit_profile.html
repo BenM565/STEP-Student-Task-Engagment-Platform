@@ -1,41 +1,73 @@
+{#
+  Account settings for admin and university staff accounts.
+  Students use student_edit_profile.html; companies use company_edit_profile.html.
+#}
 {% extends "base.html" %}
+{% block page_title %}Account settings{% endblock %}
 {% block content %}
 
-<div class="container mt-4">
-  <h2>Edit Profile</h2>
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h3 class="mb-1">Account settings</h3>
+        <p class="text-muted mb-4">{{ user.role|capitalize }} account</p>
 
-  <form method="POST">
-    <div class="mb-3">
-      <label>Name</label>
-      <input type="text" name="name" class="form-control" value="{{ student.name }}" required>
+        <form method="POST" action="{{ url_for('edit_profile') }}">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Name</label>
+            <input type="text" name="name" class="form-control" value="{{ user.name }}" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Email</label>
+            <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
+            {% if user.role == 'university' %}
+              <div class="form-text">
+                Your email domain links you to your institution:
+                {% if user.university %}<strong>{{ user.university.name }}</strong>{% else %}<span class="text-warning">not registered yet, ask an admin</span>{% endif %}.
+              </div>
+            {% endif %}
+          </div>
+
+          {% if user.role == 'university' %}
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Department</label>
+              <select name="department" class="form-select">
+                <option value="">Choose department</option>
+                {% for dept in ['Computer Science', 'Engineering', 'Business', 'Humanities', 'Careers', 'Other'] %}
+                  <option value="{{ dept }}" {% if user.department == dept %}selected{% endif %}>{{ dept }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          {% endif %}
+
+          <hr class="my-4">
+
+          <h6 class="mb-3">Change password</h6>
+          <div class="mb-3">
+            <label class="form-label">Current password</label>
+            <input type="password" name="current_password" class="form-control" placeholder="Leave blank to keep your password" autocomplete="current-password">
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">New password</label>
+              <input type="password" name="new_password" class="form-control" placeholder="At least 8 characters" autocomplete="new-password">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Confirm new password</label>
+              <input type="password" name="confirm_password" class="form-control" autocomplete="new-password">
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 pt-2">
+            <button type="submit" class="btn btn-primary">Save changes</button>
+            <a href="{{ url_for('profile') }}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
     </div>
-
-    <div class="mb-3">
-      <label>Skills (comma separated)</label>
-      <textarea name="skills" class="form-control">{{ student.skills }}</textarea>
-    </div>
-
-    <div class="mb-3">
-      <label>Grades</label>
-      <textarea name="grades" class="form-control">{{ student.grades }}</textarea>
-    </div>
-
-    <div class="mb-3">
-      <label>Projects</label>
-      <textarea name="projects" class="form-control">{{ student.projects }}</textarea>
-    </div>
-
-    <div class="mb-3">
-      <label>Portfolio URL Slug</label>
-      <input type="text" name="profile_url" class="form-control" value="{{ student.profile_url }}">
-      <small class="text-muted">
-        Your portfolio will be available at: /portfolio/{{ student.profile_url }}
-      </small>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Save Changes</button>
-    <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary">Cancel</a>
-  </form>
+  </div>
 </div>
 
 {% endblock %}

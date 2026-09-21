@@ -193,18 +193,4 @@
   roleSelect.addEventListener('change', updateSections);
   updateSections();
 </script>
-<script>
-  const roleSelect = document.getElementById('role');
-  const adminCodeWrap = document.getElementById('adminCodeWrap');
-
-  function toggleAdminCode() {
-    const isAdmin = (roleSelect && roleSelect.value === 'admin');
-    if (adminCodeWrap) adminCodeWrap.style.display = isAdmin ? 'block' : 'none';
-  }
-
-  if (roleSelect) {
-    roleSelect.addEventListener('change', toggleAdminCode);
-    toggleAdminCode();
-  }
-</script>
 {% endblock %}

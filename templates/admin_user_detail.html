@@ -25,7 +25,16 @@ independently for the STEP Student Task Engagement Platform.
     <p class="mb-1"><strong>Skills:</strong> {{ student.skills or '—' }}</p>
     <p class="mb-1"><strong>Grades:</strong> {{ student.grades or '—' }}</p>
     <p class="mb-1"><strong>Projects:</strong> {{ student.projects or '—' }}</p>
-    <p class="mb-3"><strong>References:</strong> {{ student.references or '—' }}</p>
+    {% if student.role == 'student' %}
+      <p class="mb-1"><strong>Course:</strong> {{ student.degree or '—' }}{% if student.year %} (Year {{ student.year }}){% endif %}</p>
+      <p class="mb-1"><strong>University:</strong> {{ student.university.name if student.university else '—' }}</p>
+      {% set refs = student.lecturer_references.all() %}
+      <p class="mb-3"><strong>References:</strong>
+        {% if refs %}{{ refs|map(attribute='lecturer_name')|join(', ') }}{% else %}—{% endif %}
+      </p>
+    {% else %}
+      <p class="mb-3"></p>
+    {% endif %}
 
     <div class="d-flex gap-2">
       {% if not student.verified %}

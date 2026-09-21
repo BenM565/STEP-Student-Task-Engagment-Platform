@@ -39,6 +39,7 @@ independently for the STEP Student Task Engagement Platform.
         <button class="btn btn-primary">Apply</button>
         <a class="btn btn-outline-secondary"
            href="{{ url_for('university_dashboard_export', start=start, end=end, university_id=(university.id if university else None)) }}">Export CSV</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('university_students') }}">View students</a>
       </div>
     </form>
   </div>

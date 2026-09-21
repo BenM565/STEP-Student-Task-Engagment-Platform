@@ -24,27 +24,33 @@ independently for the STEP Student Task Engagement Platform.
 
   <form method="post" class="card p-3 shadow-sm">
     <div class="mb-3">
+      <label class="form-label">Title</label>
+      <input type="text" name="title" class="form-control" maxlength="150" placeholder="e.g., Work not reviewed after two weeks" required>
+    </div>
+
+    <div class="mb-3">
       <label class="form-label">Related task (optional)</label>
       <select name="task_id" class="form-select">
         <option value="">No specific task</option>
         {% for t in user_tasks %}
-          <option value="{{ t.id }}">[{{ t.id }}] {{ t.title }}</option>
+          <option value="{{ t.id }}">{{ t.title }}</option>
         {% endfor %}
       </select>
+      <div class="form-text">When a task is chosen, the other party is worked out automatically.</div>
     </div>
 
     <div class="mb-3">
       <label class="form-label">Against user id (optional)</label>
-      <input type="text" name="against_user_id" class="form-control" placeholder="Enter user id if known">
+      <input type="text" name="against_user_id" class="form-control" placeholder="Leave blank unless you know the exact account id">
     </div>
 
     <div class="mb-3">
       <label class="form-label">Describe the issue</label>
-      <textarea name="message" class="form-control" rows="4" required></textarea>
+      <textarea name="message" class="form-control" rows="5" required></textarea>
     </div>
 
     <button class="btn btn-primary">Submit dispute</button>
-    <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+    <a href="{{ url_for('disputes_view') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
   </form>
 </div>
 

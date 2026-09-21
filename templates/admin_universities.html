@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block page_title %}Universities{% endblock %}
+{% block content %}
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h5 class="mb-1">Add a university</h5>
+        <p class="text-muted small mb-3">Students and staff whose email ends in this domain are linked to the university automatically, at registration and when the domain is added.</p>
+        <form method="POST" action="{{ url_for('admin_universities') }}">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Name</label>
+            <input name="name" class="form-control" placeholder="University College Cork" required maxlength="200">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Email domain</label>
+            <input name="domain" class="form-control" placeholder="ucc.ie" required maxlength="120">
+            <div class="form-text">Student subdomains such as umail.ucc.ie need their own entry.</div>
+          </div>
+          <button class="btn btn-primary">Add university</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0">Registered universities</h5>
+          <span class="badge bg-secondary">{{ universities|length }}</span>
+        </div>
+        {% if universities %}
+          <div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <thead>
+                <tr><th>Name</th><th>Domain</th><th class="text-end">Students</th><th></th></tr>
+              </thead>
+              <tbody>
+                {% for u in universities %}
+                  <tr>
+                    <td>{{ u.name }}</td>
+                    <td><code>{{ u.domain }}</code></td>
+                    <td class="text-end">{{ counts.get(u.id, 0) }}</td>
+                    <td class="text-end">
+                      <form method="POST" action="{{ url_for('admin_delete_university', university_id=u.id) }}" onsubmit="return confirm('Remove {{ u.name }}? Linked accounts are kept but unlinked.');">
+                        <button class="btn btn-sm btn-outline-danger">Remove</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-light border mb-0">No universities yet. Add one so university staff can see their dashboard.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

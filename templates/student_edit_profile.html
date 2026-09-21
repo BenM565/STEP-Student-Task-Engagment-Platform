@@ -1,14 +1,8 @@
 <!--
 STUDENT EDIT PROFILE PAGE
 ==========================
-Dedicated page for students to edit their profile information.
-Separate from the portfolio builder - focuses on personal details.
-
-Features:
-- Edit name, email, password
-- Edit university, grades, projects
-- Profile picture upload (optional)
-- Account security settings
+Dedicated page for students to edit their account and academic details.
+Separate from the portfolio builder, which handles skills, projects and bio.
 
 Access: Logged-in students only
 URL: /edit-profile
@@ -21,7 +15,7 @@ URL: /edit-profile
   <!-- PAGE HEADER -->
   <div class="row mb-5">
     <div class="col-12">
-      <h1 class="mb-3">👤 Edit Your Profile</h1>
+      <h1 class="mb-3">Edit Your Profile</h1>
       <p class="text-muted">Update your personal information and account settings</p>
     </div>
   </div>
@@ -35,8 +29,8 @@ URL: /edit-profile
         </div>
         <div class="card-body">
 
-          <!-- BASIC INFORMATION -->
-          <form method="POST" action="{{ url_for('edit_profile') }}" enctype="multipart/form-data">
+          <form method="POST" action="{{ url_for('edit_profile') }}">
+            <!-- BASIC INFORMATION -->
             <div class="mb-4">
               <h6 class="mb-3">Basic Information</h6>
 
@@ -53,7 +47,13 @@ URL: /edit-profile
 
               <div class="mb-3">
                 <label class="form-label">University</label>
-                <input type="text" class="form-control" name="university" placeholder="e.g., University College Dublin" value="{{ current_user.university or '' }}">
+                <select class="form-select" name="university">
+                  <option value="">Not linked</option>
+                  {% for uni in universities %}
+                    <option value="{{ uni.id }}" {% if current_user.university_id == uni.id %}selected{% endif %}>{{ uni.name }}</option>
+                  {% endfor %}
+                </select>
+                <small class="form-text text-muted">Linked automatically from your email domain when your university is registered on STEP.</small>
               </div>
             </div>
 
@@ -62,6 +62,22 @@ URL: /edit-profile
             <!-- ACADEMIC INFORMATION -->
             <div class="mb-4">
               <h6 class="mb-3">Academic Information</h6>
+
+              <div class="row">
+                <div class="col-md-8 mb-3">
+                  <label class="form-label">Course / Degree</label>
+                  <input type="text" class="form-control" name="degree" placeholder="e.g., BSc Computer Science" value="{{ current_user.degree or '' }}">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">Year of study</label>
+                  <select class="form-select" name="year">
+                    <option value="">Select...</option>
+                    {% for y in ['1', '2', '3', '4', 'Masters', 'PhD', 'Graduate'] %}
+                      <option value="{{ y }}" {% if current_user.year == y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
 
               <div class="mb-3">
                 <label class="form-label">Grades/GPA</label>
@@ -82,18 +98,18 @@ URL: /edit-profile
 
               <div class="mb-3">
                 <label class="form-label">Current Password</label>
-                <input type="password" class="form-control" name="current_password" placeholder="Leave blank if not changing password">
+                <input type="password" class="form-control" name="current_password" placeholder="Leave blank if not changing password" autocomplete="current-password">
                 <small class="form-text text-muted">Required to change password</small>
               </div>
 
               <div class="mb-3">
                 <label class="form-label">New Password</label>
-                <input type="password" class="form-control" name="new_password" placeholder="Leave blank to keep current password">
+                <input type="password" class="form-control" name="new_password" placeholder="At least 8 characters" autocomplete="new-password">
               </div>
 
               <div class="mb-3">
                 <label class="form-label">Confirm New Password</label>
-                <input type="password" class="form-control" name="confirm_password" placeholder="Confirm new password">
+                <input type="password" class="form-control" name="confirm_password" placeholder="Confirm new password" autocomplete="new-password">
               </div>
             </div>
 
@@ -141,12 +157,12 @@ URL: /edit-profile
           <h5 class="mb-0"><i class="bi bi-info-circle"></i> Account Info</h5>
         </div>
         <div class="card-body">
-          <p><strong>Member Since:</strong></p>
-          <p class="text-muted">Account created</p>
+          <p class="mb-1"><strong>University</strong></p>
+          <p class="text-muted">{{ current_user.university.name if current_user.university else 'Not linked yet' }}</p>
 
           <hr>
 
-          <p><strong>Account Status:</strong></p>
+          <p class="mb-1"><strong>Account Status</strong></p>
           {% if current_user.verified %}
             <span class="badge bg-success"><i class="bi bi-check-circle"></i> Verified</span>
           {% else %}

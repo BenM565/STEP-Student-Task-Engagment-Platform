@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Access denied · STEP{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+  <div class="display-1 fw-bold">403</div>
+  <h4 class="mb-2">You don't have access to that page</h4>
+  <p class="text-muted mb-4">It belongs to a different account type, or to another user.</p>
+  <a href="{{ url_for('index') }}" class="btn btn-primary">Go to my dashboard</a>
+</div>
+{% endblock %}
