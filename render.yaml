@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: step-platform
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: Iteration-6
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /login
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: step-db
+          property: connectionString
+      # Optional integrations - set these in the Render dashboard when needed.
+      # The app degrades gracefully when they are absent.
+      - key: APP_URL
+        sync: false
+      - key: MAIL_SERVER
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_DEFAULT_SENDER
+        sync: false
+      - key: STRIPE_PUBLIC_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+databases:
+  - name: step-db
+    plan: free
+    region: frankfurt
+    databaseName: step
+    user: step
