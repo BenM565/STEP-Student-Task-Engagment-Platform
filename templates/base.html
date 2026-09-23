@@ -18,6 +18,8 @@ independently for the STEP Student Task Engagement Platform.
   <meta name="theme-color" content="#3b82f6">
   <meta name="description" content="Connect students with companies for real-world task opportunities">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192x192.png') }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/brand/favicon-64.png') }}">
+  <link rel="icon" type="image/png" sizes="256x256" href="{{ url_for('static', filename='images/brand/favicon-256.png') }}">
 
   <!-- Inter font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -45,10 +47,9 @@ independently for the STEP Student Task Engagement Platform.
     <div class="navbar-container">
       <!-- Logo/Brand -->
       <a class="navbar-logo" href="{{ url_for('index') }}">
-        <svg class="brand-svg" width="24" height="24" viewBox="0 0 24 24" style="display: inline-block; vertical-align: middle; margin-right: 8px;">
-          <path fill="currentColor" d="M12 2l1.9 5.3L19 9l-5.1 1.7L12 16l-1.9-5.3L5 9l5.1-1.7L12 2z"/>
-        </svg>
-        <span>STEP</span>
+        <img class="navbar-logo-img"
+             src="{{ url_for('static', filename='images/brand/step-logo-nomain-white.png') }}"
+             alt="STEP">
       </a>
 
       <!-- Navigation Menu -->
@@ -153,9 +154,6 @@ independently for the STEP Student Task Engagement Platform.
         </a>
       </div>
       {% endif %}
-
-      <!-- Page Title Block -->
-      {% block page_title %}{% endblock %}
 
       <!-- Flash Messages -->
       {% with messages = get_flashed_messages(with_categories=true) %}

@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>STEP - Connect Students with Real Work</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/brand/favicon-64.png') }}">
+  <link rel="icon" type="image/png" sizes="256x256" href="{{ url_for('static', filename='images/brand/favicon-256.png') }}">
 
   <!-- Inter font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,13 +24,13 @@
   <style>
     /* Landing Page — minimal monochrome */
     :root {
-      --ink: #18181b;
-      --ink-2: #27272a;
+      --ink: #171f27;       /* matches the site's rebranded navy ink */
+      --ink-2: #0f1720;
       --gray: #52525b;
       --gray-light: #71717a;
       --line: #e4e4e7;
       --paper: #fafafa;
-      --panel: #141417;
+      --panel: #eef1f5;     /* light blue-grey hero band, was near-black */
     }
 
     body {
@@ -124,10 +126,11 @@
       position: absolute;
       width: 420px;
       height: 420px;
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(91, 114, 144, 0.10);
       border-radius: 50%;
       top: -120px;
       right: -100px;
+      animation: floatCircle1 9s ease-in-out infinite;
     }
 
     .hero-section::after {
@@ -135,10 +138,21 @@
       position: absolute;
       width: 300px;
       height: 300px;
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(91, 114, 144, 0.10);
       border-radius: 50%;
       bottom: -80px;
       left: -60px;
+      animation: floatCircle2 11s ease-in-out infinite;
+    }
+
+    @keyframes floatCircle1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50%      { transform: translate(-24px, 26px) scale(1.06); }
+    }
+
+    @keyframes floatCircle2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50%      { transform: translate(22px, -22px) scale(1.08); }
     }
 
     .hero-content {
@@ -146,23 +160,35 @@
       z-index: 2;
       max-width: 760px;
       text-align: center;
-      color: #fafafa;
+      color: var(--ink);
     }
 
+    .hero-logo {
+      display: block;
+      width: 100%;
+      max-width: 340px;
+      height: auto;
+      margin: 0 auto 28px;
+      filter: drop-shadow(0 10px 24px rgba(23, 31, 39, 0.12));
+      animation: slideUp 0.7s ease both;
+    }
+
+    /* Kept smaller than the logo on purpose — the wordmark above should
+       read as the brand; this headline is supporting copy underneath it. */
     .hero-content h1 {
-      font-size: 3.4rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
       margin-bottom: 20px;
-      line-height: 1.12;
-      color: #fff;
+      line-height: 1.18;
+      color: var(--ink);
     }
 
     .hero-content p {
       font-size: 1.15rem;
       margin-bottom: 40px;
       line-height: 1.65;
-      color: rgba(255,255,255,0.72);
+      color: var(--gray);
     }
 
     .hero-buttons {
@@ -187,27 +213,33 @@
       border: none;
     }
 
+    /* On the old near-black hero, "Get Started" was a solid white pill
+       (strong contrast) and "Already a Member?" a faint white outline
+       (secondary). Same hierarchy, recolored for the light band: dark
+       filled button as the strong CTA, dark outline as the quiet one. */
     .hero-buttons .btn-light {
-      background: #fff;
-      color: var(--ink);
+      background: var(--ink);
+      color: #fff;
+      border: 1px solid var(--ink);
     }
 
     .hero-buttons .btn-light:hover {
       transform: translateY(-2px);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-      background: #f4f4f5;
+      box-shadow: 0 12px 32px rgba(23, 31, 39, 0.25);
+      background: var(--ink-2);
+      border-color: var(--ink-2);
     }
 
     .hero-buttons .btn-primary {
       background: transparent;
-      border: 1px solid rgba(255,255,255,0.35);
-      color: #fff;
+      border: 1px solid rgba(23, 31, 39, 0.25);
+      color: var(--ink);
     }
 
     .hero-buttons .btn-primary:hover {
       transform: translateY(-2px);
-      background: rgba(255,255,255,0.08);
-      border-color: rgba(255,255,255,0.6);
+      background: rgba(23, 31, 39, 0.05);
+      border-color: rgba(23, 31, 39, 0.4);
     }
 
     /* Features */
@@ -423,12 +455,13 @@
       font-weight: 500;
     }
 
-    /* CTA */
+    /* CTA — shares --panel with the hero, so it gets the same light band
+       and the same dark-on-light recolor (was white text on near-black). */
     .cta-section {
       padding: 90px 20px;
       background: var(--panel);
       text-align: center;
-      color: #fff;
+      color: var(--ink);
       position: relative;
       z-index: 1;
     }
@@ -438,13 +471,13 @@
       font-weight: 800;
       letter-spacing: -0.02em;
       margin-bottom: 18px;
-      color: #fff;
+      color: var(--ink);
     }
 
     .cta-section p {
       font-size: 1.1rem;
       margin-bottom: 40px;
-      color: rgba(255, 255, 255, 0.72);
+      color: var(--gray);
       font-weight: 400;
       line-height: 1.6;
     }
@@ -466,25 +499,27 @@
     }
 
     .cta-buttons .btn-light {
-      background: #fff;
-      color: var(--ink);
+      background: var(--ink);
+      color: #fff;
+      border: 1px solid var(--ink);
     }
 
     .cta-buttons .btn-light:hover {
       transform: translateY(-2px);
-      background: #f4f4f5;
+      background: var(--ink-2);
+      border-color: var(--ink-2);
     }
 
     .cta-buttons .btn-outline-light {
-      border: 1px solid rgba(255,255,255,0.35);
-      color: #fff;
+      border: 1px solid rgba(23, 31, 39, 0.25);
+      color: var(--ink);
       background: transparent;
     }
 
     .cta-buttons .btn-outline-light:hover {
-      background: rgba(255,255,255,0.08);
-      border-color: rgba(255,255,255,0.6);
-      color: #fff;
+      background: rgba(23, 31, 39, 0.05);
+      border-color: rgba(23, 31, 39, 0.4);
+      color: var(--ink);
     }
 
     /* Footer */
@@ -510,7 +545,8 @@
 
     /* Responsive */
     @media (max-width: 768px) {
-      .hero-content h1 { font-size: 2.4rem; }
+      .hero-logo { max-width: 240px; }
+      .hero-content h1 { font-size: 1.9rem; }
       .hero-content p { font-size: 1.05rem; }
       .hero-buttons { flex-direction: column; align-items: center; }
       .hero-buttons .btn { width: 100%; max-width: 300px; }
@@ -526,10 +562,8 @@
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <!-- Logo -->
         <a class="navbar-brand" href="{{ url_for('index') }}">
-          <svg class="brand-logo" viewBox="0 0 24 24" style="display: inline-block; vertical-align: middle;">
-            <path fill="currentColor" d="M12 2l1.9 5.3L19 9l-5.1 1.7L12 16l-1.9-5.3L5 9l5.1-1.7L12 2z"/>
-          </svg>
-          STEP
+          <img src="{{ url_for('static', filename='images/brand/step-logo-nomain.png') }}"
+               alt="STEP" style="height: 32px; width: auto; display: block;">
         </a>
 
         <!-- Nav Buttons -->
@@ -548,6 +582,8 @@
   <!-- Hero Section -->
   <section class="hero-section">
     <div class="hero-content">
+      <img src="{{ url_for('static', filename='images/brand/step-logo-full.png') }}"
+           alt="STEP — Turn potential into experience" class="hero-logo">
       <h1>Connect Students with Real Work</h1>
       <p>STEP bridges the gap between students seeking opportunities and companies looking for talented individuals. Build your portfolio, gain experience, and launch your career.</p>
 

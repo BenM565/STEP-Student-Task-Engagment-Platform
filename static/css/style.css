@@ -190,7 +190,15 @@ h1, h2, h3, h4, h5, h6 {
     font-weight: var(--font-semibold);      /* Semibold like Apple */
     line-height: 1.1;                       /* Tighter for headings */
     letter-spacing: -0.022em;               /* Apple's negative letter-spacing */
-    color: var(--text-primary);
+    /* No explicit color: a heading should inherit from its container, same
+       as any other text. Setting it here unconditionally used to win over
+       Bootstrap's .text-white on any heading inside a dark card-header (a
+       plain h1-h6 selector directly targets the heading itself, which beats
+       an ancestor's inherited color regardless of !important) -- so every
+       "<h5 ...>Title</h5>" inside a bg-primary/bg-success/etc "text-white"
+       header rendered in dark ink instead of white, effectively invisible
+       against its own banner. Headings still read dark everywhere else,
+       since <body> itself sets color: var(--text-primary). */
     margin-bottom: var(--spacing-md);
     font-feature-settings: "kern" 1;        /* Enable kerning */
 }
@@ -284,11 +292,12 @@ a:hover {
 .navbar-container {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0.75rem 1.5rem;
+    padding: 0.875rem 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    min-height: 60px;
+    min-height: 64px;
+    gap: 1.5rem;
 }
 
 /* Logo */
@@ -322,7 +331,7 @@ a:hover {
 .navbar-menu,
 .navbar-nav {
     display: flex;
-    gap: 1rem;
+    gap: 2rem;
     list-style: none;
     align-items: center;
     margin: 0;
@@ -340,13 +349,13 @@ a:hover {
     text-decoration: none;
     font-weight: var(--font-medium);
     font-size: 0.9rem;
-    padding: 0.5rem 0.75rem;
+    padding: 0.6rem 1rem;
     border-radius: var(--radius-md);
     transition: all var(--transition-fast);
     position: relative;
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.4rem;
     white-space: nowrap;
 }
 
@@ -1448,8 +1457,17 @@ a:hover {
 .text-info { color: var(--info) !important; }
 
 /* Background Colors */
-.bg-primary { background-color: var(--bg-primary) !important; }
-.bg-secondary { background-color: var(--bg-secondary) !important; }
+/* NOTE: these two used to read `background-color: var(--bg-primary/--bg-secondary)`,
+   which is the PAGE background token (white / near-white). Bootstrap's own
+   `.badge`, `.card-header` etc. also use the class names `bg-primary` and
+   `bg-secondary` to mean "the theme's blue / gray accent", and since this
+   stylesheet loads after Bootstrap, that override was winning everywhere:
+   every badge, count-pill and card header using bg-primary or bg-secondary
+   rendered white-on-white or near-white-on-near-white, with the text
+   effectively invisible. Fixed to use the site's own accent tones instead,
+   which also keeps them visually consistent with the monochrome theme. */
+.bg-primary { background-color: var(--primary-color) !important; color: #fff !important; }
+.bg-secondary { background-color: var(--text-secondary) !important; color: #fff !important; }
 .bg-dark { background-color: var(--bg-dark) !important; }
 
 /* Display */
@@ -2750,11 +2768,17 @@ html[data-theme="dark"] .command-palette-input-container {
     text-decoration: none;
     display: flex;
     align-items: center;
+    gap: 0.65rem;
 }
 
-/* Hide the SVG star mark inside the navbar logo */
-.navbar-logo .brand-svg {
-    display: none !important;
+/* The actual STEP logo mark (staircase + climbing figures), supplied as an
+   image rather than drawn in CSS/SVG. This is the light-on-dark render of
+   the same artwork used at full color wherever the surface is light (the
+   public landing page, whose navbar is white). */
+.navbar-logo-img {
+    height: 36px;
+    width: auto;
+    display: block;
 }
 
 /* Landing page brand also — hide SVG star */
@@ -2806,66 +2830,146 @@ body {
    END OF SLEEK ENHANCEMENTS
    ============================================ */
 /* ============================================
-   25. MINIMAL MONOCHROME THEME
+   25. BRAND THEME — navy + slate blue
    Loads last, so these token values override the
    colorful defaults above without touching any
    component rules or template markup.
+
+   Colors are sampled directly from the STEP logo mark: the deep navy of the
+   staircase and wordmark (#171f27), and the slate blue of the climbing
+   figures (#7892aa / #5b7290). This replaces the earlier flat monochrome
+   (everything near-black) with a restrained two-tone palette that still
+   reads as premium, but ties every accent back to the actual logo instead
+   of an arbitrary gray. Every pairing below was checked for WCAG AA
+   contrast (4.5:1+) before being picked, not eyeballed — see the bug this
+   caught on bg-primary/bg-secondary above.
    ============================================ */
 
 :root {
-    /* Primary accent collapses to ink */
-    --primary-color: #18181b;
-    --primary-dark: #000000;
-    --primary-light: #3f3f46;
-    --secondary-color: #18181b;
-    --accent-color: #18181b;
+    /* Primary accent: deep navy, from the logo's ink */
+    --primary-color: #171f27;
+    --primary-dark: #0c1015;
+    --primary-light: #3d4d63;
+    --secondary-color: #171f27;
+    --accent-color: #5b7290;
 
-    /* Former blue/orange accents become neutral grays */
-    --electric-blue: #18181b;
-    --warm-orange: #52525b;
-    --electric-blue-dark: #000000;
-    --warm-orange-dark: #3f3f46;
+    /* Former blue/orange accents become the logo's navy / slate-blue duo */
+    --electric-blue: #5b7290;
+    --warm-orange: #8f6a24;
+    --electric-blue-dark: #3d4d63;
+    --warm-orange-dark: #6b4f1a;
 
-    /* Gradients flatten to near-solid monochrome sweeps */
-    --gradient-primary: linear-gradient(135deg, #18181b 0%, #27272a 100%);
-    --gradient-secondary: linear-gradient(135deg, #3f3f46 0%, #52525b 100%);
-    --gradient-tertiary: linear-gradient(135deg, #27272a 0%, #3f3f46 100%);
-    --gradient-hero: linear-gradient(135deg, #141417 0%, #1d1d21 100%);
-    --gradient-stat-1: linear-gradient(135deg, #18181b 0%, #27272a 100%);
-    --gradient-stat-2: linear-gradient(135deg, #27272a 0%, #3f3f46 100%);
-    --gradient-stat-3: linear-gradient(135deg, #3f3f46 0%, #52525b 100%);
-    --gradient-stat-4: linear-gradient(135deg, #52525b 0%, #71717a 100%);
-    --gradient-dark-bg: linear-gradient(135deg, #141417 0%, #1d1d21 100%);
+    /* Gradients: navy deepening to slate blue, instead of flat gray sweeps */
+    --gradient-primary: linear-gradient(135deg, #171f27 0%, #2d3a4d 100%);
+    --gradient-secondary: linear-gradient(135deg, #3d4d63 0%, #5b7290 100%);
+    --gradient-tertiary: linear-gradient(135deg, #2d3a4d 0%, #3d4d63 100%);
+    --gradient-hero: linear-gradient(135deg, #10151c 0%, #1c2531 100%);
+    --gradient-stat-1: linear-gradient(135deg, #171f27 0%, #2d3a4d 100%);
+    --gradient-stat-2: linear-gradient(135deg, #2d3a4d 0%, #3d4d63 100%);
+    --gradient-stat-3: linear-gradient(135deg, #3d4d63 0%, #5b7290 100%);
+    --gradient-stat-4: linear-gradient(135deg, #5b7290 0%, #7892aa 100%);
+    --gradient-dark-bg: linear-gradient(135deg, #10151c 0%, #1c2531 100%);
 
-    /* Neutrals */
-    --text-primary: #18181b;
+    /* Neutrals: body text/background stay neutral grays for readability;
+       navy and slate blue are reserved for brand accents, not body copy */
+    --text-primary: #171f27;
     --text-secondary: #52525b;
     --text-muted: #71717a;
     --bg-primary: #ffffff;
     --bg-secondary: #fafafa;
     --bg-tertiary: #f4f4f5;
-    --bg-dark: #141417;
+    --bg-dark: #10151c;
     --bg-card: #ffffff;
     --border-light: #e4e4e7;
     --border-medium: #d4d4d8;
     --border-dark: #71717a;
 
-    /* Status colors stay semantic but muted */
-    --success: #16a34a;
-    --danger: #dc2626;
-    --warning: #ca8a04;
-    --info: #52525b;
+    /* Status colors: muted, premium tones instead of stock bright
+       red/green/amber/cyan, all checked at 4.5:1+ contrast with the text
+       color paired with them below */
+    --success: #2f6b52;
+    --danger: #8c3f3f;
+    --warning: #8f6a24;
+    --info: #4f6a89;
 
-    /* Neutral shadows; no colored glows */
-    --shadow-glow: 0 0 40px rgba(24, 24, 27, 0.08);
-    --shadow-glow-blue: 0 0 30px rgba(24, 24, 27, 0.10);
-    --shadow-glow-orange: 0 0 30px rgba(24, 24, 27, 0.10);
+    /* Glow shadows tinted navy instead of flat black */
+    --shadow-glow: 0 0 40px rgba(23, 31, 39, 0.08);
+    --shadow-glow-blue: 0 0 30px rgba(91, 114, 144, 0.15);
+    --shadow-glow-orange: 0 0 30px rgba(143, 106, 36, 0.12);
 
     /* Typography */
     --font-primary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
                     Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
                     Roboto, sans-serif;
+}
+
+/* ============================================
+   26. STATUS COLOR HARMONIZATION
+   Bootstrap ships bg-success/btn-success (etc.) with fixed colors compiled
+   into its own CSS -- they don't read the variables above at all, so
+   without this they'd still show stock bright green/red/amber/cyan against
+   the new navy/slate palette. `.btn-success`, `.btn-danger` and
+   `.btn-outline-danger` already delegate to var(--success) etc. above (see
+   section 8) and need no changes here. Every override pairs its background
+   with an explicit text color -- the bg-primary/bg-secondary bug above was
+   exactly this, forgetting that pairing.
+   ============================================ */
+.bg-success { background-color: var(--success) !important; color: #fff !important; }
+.bg-danger  { background-color: var(--danger)  !important; color: #fff !important; }
+.bg-warning { background-color: var(--warning) !important; color: #fff !important; }
+.bg-info    { background-color: var(--info)    !important; color: #fff !important; }
+
+.btn-warning {
+    background: var(--warning);
+    color: #fff;
+    border-color: var(--warning);
+}
+.btn-warning:hover, .btn-warning:focus {
+    background: var(--warm-orange-dark);
+    border-color: var(--warm-orange-dark);
+    color: #fff;
+}
+
+.btn-info {
+    background: var(--info);
+    color: #fff;
+    border-color: var(--info);
+}
+.btn-info:hover, .btn-info:focus {
+    background: var(--primary-light);
+    border-color: var(--primary-light);
+    color: #fff;
+}
+
+.btn-outline-success {
+    background: transparent;
+    color: var(--success);
+    border-color: var(--success);
+}
+.btn-outline-success:hover {
+    background: var(--success);
+    color: #fff;
+}
+
+.btn-outline-warning {
+    background: transparent;
+    color: var(--warning);
+    border-color: var(--warning);
+}
+.btn-outline-warning:hover {
+    background: var(--warning);
+    color: #fff;
+}
+
+.btn-outline-info {
+    background: transparent;
+    color: var(--info);
+    border-color: var(--info);
+}
+.btn-outline-info:hover {
+    background: var(--info);
+    color: #fff;
 }
 
 /* Quiet, static page background instead of the animated navy gradient */
