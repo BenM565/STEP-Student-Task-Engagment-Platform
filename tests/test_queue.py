@@ -131,7 +131,8 @@ def test_ensure_schema_adds_columns_to_existing_table(app):
 
     added = ensure_schema()
     assert set(added) == {"ai_agent_runs.artifacts", "ai_agent_runs.web_search_requests",
-                          "ai_agent_runs.started_at", "ai_agent_runs.worker_id"}
+                          "ai_agent_runs.started_at", "ai_agent_runs.worker_id",
+                          "ai_agent_runs.refinement", "ai_agent_runs.context_run_id"}
     columns = {c["name"] for c in inspect(step_app.db.engine).get_columns("ai_agent_runs")}
     assert {"artifacts", "started_at", "worker_id", "web_search_requests"} <= columns
     assert "ai_agent_run_files" in inspect(step_app.db.engine).get_table_names()

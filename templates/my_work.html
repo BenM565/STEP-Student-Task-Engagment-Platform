@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}My work · STEP{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">My work</h4>
+  <a href="{{ url_for('student_tasks') }}" class="btn btn-sm btn-outline-primary">Find more tasks</a>
+</div>
+{% if applications %}
+  <div class="card shadow-sm">
+    <ul class="list-group list-group-flush">
+      {% for application in applications %}
+        {% set t = application.task %}
+        <li class="list-group-item d-flex flex-column flex-md-row justify-content-between gap-2">
+          <div>
+            <div class="fw-semibold">{{ t.title }}</div>
+            <div class="small text-muted">
+              {{ t.company.name }} · applied {{ application.created_at.strftime('%d %b %Y') if application.created_at else '' }}
+              {% if t.deadline %} · due {{ t.deadline.strftime('%d %b %Y') }}{% endif %}
+            </div>
+            <div class="small mt-1">
+              {% include "_application_status.html" %}
+              {% if application.status == 'accepted' %}{% with task = t %}{% include "_task_status.html" %}{% endwith %}{% endif %}
+              {% if application.status == 'accepted' and t.submissions and t.submissions[-1].status == 'revision_requested' %}
+                <span class="badge text-bg-danger">Changes requested</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="d-flex gap-2 align-items-start flex-shrink-0">
+            {% if application.status == 'accepted' %}
+              <a href="{{ url_for('marketplace.student_task', task_id=t.id) }}" class="btn btn-sm btn-primary">Open task</a>
+            {% else %}
+              <a href="{{ url_for('marketplace.task_detail', task_id=t.id) }}" class="btn btn-sm btn-outline-secondary">View</a>
+            {% endif %}
+            {% if application.status == 'pending' %}
+              <form method="post" action="{{ url_for('marketplace.withdraw', application_id=application.id) }}" onsubmit="return confirm('Withdraw your application?');">
+                {{ csrf_field() }}
+                <button class="btn btn-sm btn-outline-secondary">Withdraw</button>
+              </form>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% else %}
+  <div class="card shadow-sm"><div class="card-body text-muted">You haven't applied for any tasks yet. <a href="{{ url_for('student_tasks') }}">Find a task</a>.</div></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,3 @@
+{# Task status badge; expects `task` #}
+{% set _s = {'open': ('Open', 'text-bg-primary'), 'in_progress': ('In progress', 'text-bg-warning'), 'completed': ('Completed', 'text-bg-success'), 'closed': ('Closed', 'text-bg-secondary')} %}
+<span class="badge {{ _s.get(task.status, ('', 'text-bg-secondary'))[1] }}">{{ _s.get(task.status, (task.status|capitalize, ''))[0] }}</span>

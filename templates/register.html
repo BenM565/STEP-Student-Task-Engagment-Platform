@@ -16,6 +16,7 @@
         <h5 class="mb-3">Create your account</h5>
 
         <form method="post" action="{{ url_for('register') }}">
+          {{ csrf_field() }}
           <div class="row g-3">
 
             {# # Name input (required for all roles) #}
@@ -24,15 +25,14 @@
               <input required name="name" class="form-control">
             </div>
 
-            {# Role selector (student/company/admin). JS below toggles student fields #}
-<div class="col-md-6">
-  <label class="form-label">Role</label>
-  <select name="role" class="form-select" id="roleSelect">
-    <option value="student">Student</option>
-    <option value="company">Company</option>
-    <option value="admin">Admin</option>
-  </select>
-</div>
+            {# Role selector (student/company). Admins are created by the platform owner. JS below toggles student fields #}
+            <div class="col-md-6">
+              <label class="form-label">I am a</label>
+              <select name="role" class="form-select" id="roleSelect">
+                <option value="student">Student</option>
+                <option value="company">Company</option>
+              </select>
+            </div>
 
 
             {# # Email and password (both roles) #}
@@ -42,7 +42,8 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">Password</label>
-              <input required name="password" type="password" class="form-control" autocomplete="off">
+              <input required name="password" type="password" class="form-control" minlength="8" autocomplete="new-password">
+              <div class="form-text">At least 8 characters.</div>
             </div>
 
             {# # Student-only section (hidden/disabled when role=company) #}
@@ -81,7 +82,7 @@
 
 <script>
   // # When role=student: show student fields
-  // # When role=company or role=admin: hide and disable student-only fields
+  // # When role=company: hide and disable student-only fields
   (function () {
     const roleSelect = document.getElementById('roleSelect');
     const section = document.getElementById('studentSection');

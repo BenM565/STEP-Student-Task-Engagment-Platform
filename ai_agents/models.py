@@ -115,8 +115,12 @@ class AgentRun(db.Model):
     is_saved = db.Column(db.Boolean, default=False, nullable=False)
     # STEP task created from this run's output (AI -> human handoff)
     created_task_id = db.Column(db.Integer, db.ForeignKey("tasks.id", ondelete="SET NULL"))
-    # Set when the run was started via "Run again"
+    # Set when the run was started via "Run again" or "Refine"
     parent_run_id = db.Column(db.Integer, db.ForeignKey("ai_agent_runs.id", ondelete="SET NULL"))
+    # Company feedback for a refinement of parent_run_id's result
+    refinement = db.Column(db.Text)
+    # Earlier run whose result is passed to this agent as context ("Continue in another agent")
+    context_run_id = db.Column(db.Integer, db.ForeignKey("ai_agent_runs.id", ondelete="SET NULL"))
 
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
     started_at = db.Column(db.DateTime)

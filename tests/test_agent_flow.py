@@ -228,7 +228,7 @@ def test_create_step_task_from_ai_output(app, client, make_user):
     # Nothing is created until the company submits the form
     assert step_app.Task.query.count() == 0
 
-    resp = client.post("/tasks/new", data={"title": "Edited onboarding research task", "requirements": "Edited text",
+    resp = client.post("/tasks/new", data={"csrf_token": CSRF, "title": "Edited onboarding research task", "requirements": "Edited text",
                                            "estimated_hours": "35", "source_run_id": str(run.id)})
     assert resp.status_code == 302
     task = step_app.Task.query.one()

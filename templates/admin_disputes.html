@@ -1,64 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Review Submissions</title>
-  <link rel="stylesheet" href="/static/style.css" />
-</head>
-<body>
-
-<header>
-  <h1>Submission Reviews</h1>
-</header>
-
-<table>
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Application</th>
-      <th>Content</th>
-      <th>Status</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody id="submissions"></tbody>
-</table>
-
-<script>
-fetch("/submissions")
-  .then(res => res.json())
-  .then(submissions => {
-    const table = document.getElementById("submissions");
-
-    submissions.forEach(s => {
-      const row = document.createElement("tr");
-
-      row.innerHTML = `
-        <td>${s.id}</td>
-        <td>${s.application_id}</td>
-        <td>${s.content}</td>
-        <td>${s.status}</td>
-        <td>
-          <button onclick="review(${s.id}, 'approved')">Approve</button>
-          <button onclick="review(${s.id}, 'changes_requested')">Request Changes</button>
-        </td>
-      `;
-
-      table.appendChild(row);
-    });
-  });
-
-function review(id, status) {
-  fetch(`/submissions/${id}/review`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      status,
-      feedback: status === "changes_requested" ? "Please improve this work" : null
-    })
-  }).then(() => location.reload());
-}
-</script>
-
-</body>
-</html>
+<!--code layout is from chatgpt-->
+<!--inside is customised with my own code-->
+{% extends "base.html" %}
+{% block title %}Disputes · STEP admin{% endblock %}
+{% block content %}
+{# all disputes, newest first #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">Disputes</h5>
+  <a href="{{ url_for('admin_home') }}" class="btn btn-sm btn-outline-secondary">Admin dashboard</a>
+</div>
+{% set badge = {'open': 'text-bg-danger', 'in_review': 'text-bg-warning', 'resolved': 'text-bg-success'} %}
+{% if disputes %}
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle small mb-0">
+        <thead class="table-light"><tr><th>#</th><th>Raised by</th><th>Against</th><th>Task</th><th>Message</th><th>Status</th><th>Raised</th><th></th></tr></thead>
+        <tbody>
+          {% for d in disputes %}
+            <tr>
+              <td>{{ d.id }}</td>
+              <td>{{ d.raised_by.name if d.raised_by else '—' }}</td>
+              <td>{{ d.against.name if d.against else '—' }}</td>
+              <td>{{ d.task.title if d.task else '—' }}</td>
+              <td style="max-width: 20rem;" class="text-truncate">{{ d.message }}</td>
+              <td><span class="badge {{ badge.get(d.status, 'text-bg-secondary') }}">{{ d.status|replace('_', ' ')|capitalize }}</span></td>
+              <td class="text-nowrap">{{ d.created_at.strftime('%d %b %Y') if d.created_at else '—' }}</td>
+              <td class="text-end"><a href="{{ url_for('admin_dispute_detail', dispute_id=d.id) }}" class="btn btn-sm btn-outline-secondary">Open</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <p class="text-muted">No disputes have been raised.</p>
+{% endif %}
+{% endblock %}

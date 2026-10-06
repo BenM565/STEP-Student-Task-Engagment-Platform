@@ -1,37 +1,30 @@
 <!--code layout is from chatgpt-->
 <!--inside is customised with my own code-->
 {% extends "base.html" %}
+{% block title %}Log in · STEP{% endblock %}
 {% block content %}
-
-
-{# Render login form (email + password) and link to registration#}
-
-{# Minimal structure for clarity; relies on Flask flash messages in base.html#}
-
-
 <div class="row justify-content-center">
-  <div class="col-md-6">
+  <div class="col-md-6 col-lg-5">
     <div class="card shadow-sm">
       <div class="card-body p-4">
         <h5 class="mb-3">Log in</h5>
-
-<form method="post" action="{{ url_for('login') }}" autocomplete="off">
-  <!-- email -->
-  <div class="mb-3">
-    <label class="form-label">Email</label>
-    <input name="email" type="email" class="form-control" required autocomplete="off">
-  </div>
-  <!-- password -->
-  <div class="mb-3">
-    <label class="form-label">Password</label>
-    <input name="password" type="password" class="form-control" required autocomplete="off">
-  </div>
-  <div class="d-grid">
-    <button class="btn btn-primary">Log in</button>
-  </div>
-</form>
-
-
+        <form method="post" action="{{ url_for('login', next=request.args.get('next')) }}">
+          {{ csrf_field() }}
+          <div class="mb-3">
+            <label class="form-label" for="email">Email</label>
+            <input id="email" name="email" type="email" class="form-control" required autocomplete="email" autofocus>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="password">Password</label>
+            <input id="password" name="password" type="password" class="form-control" required autocomplete="current-password">
+          </div>
+          <div class="mb-3 text-end">
+            <a class="small" href="{{ url_for('accounts.forgot_password') }}">Forgot password?</a>
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-primary">Log in</button>
+          </div>
+        </form>
         <hr>
         <p class="mb-0">No account? <a href="{{ url_for('register') }}">Create one</a></p>
       </div>

@@ -26,15 +26,18 @@
     <div class="d-flex gap-2">
       {% if not student.verified %}
         <form method="post" action="{{ url_for('admin_verify_user', user_id=student.id) }}">
+          {{ csrf_field() }}
           <button class="btn btn-success">Verify account</button>
         </form>
       {% else %}
         <form method="post" action="{{ url_for('admin_unverify_user', user_id=student.id) }}">
+          {{ csrf_field() }}
           <button class="btn btn-outline-danger">Remove verification</button>
         </form>
       {% endif %}
 
       <form method="post" action="{{ url_for('admin_delete_user', user_id=student.id) }}" onsubmit="return confirm('Delete this user account?');">
+        {{ csrf_field() }}
         <button class="btn btn-outline-danger">Delete account</button>
       </form>
 

@@ -10,14 +10,15 @@
   <div class="card mb-3 shadow-sm">
     <div class="card-body">
       <p class="mb-1"><strong>Status:</strong> {{ d.status|upper }}</p>
-      <p class="mb-1"><strong>Raised by user id:</strong> {{ d.raised_by_user_id }}</p>
-      {% if d.against_user_id %}
-        <p class="mb-1"><strong>Against user id:</strong> {{ d.against_user_id }}</p>
+      <p class="mb-1"><strong>Raised by:</strong> {{ d.raised_by.name if d.raised_by else '—' }} ({{ d.raised_by.role if d.raised_by }}{% if d.raised_by %}, {{ d.raised_by.email }}{% endif %})</p>
+      {% if d.against %}
+        <p class="mb-1"><strong>Against:</strong> {{ d.against.name }} ({{ d.against.role }}, {{ d.against.email }})</p>
       {% endif %}
-      {% if d.task_id %}
-        <p class="mb-1"><strong>Related task id:</strong> {{ d.task_id }}</p>
+      {% if d.task %}
+        <p class="mb-1"><strong>Related task:</strong> #{{ d.task.id }} {{ d.task.title }} <span class="text-muted">({{ d.task.status|replace('_', ' ') }})</span></p>
       {% endif %}
-      <p class="mb-3"><strong>Message:</strong><br>{{ d.message }}</p>
+      <p class="mb-1"><strong>Raised:</strong> {{ d.created_at.strftime('%d %b %Y %H:%M') if d.created_at else '—' }}</p>
+      <p class="mb-3"><strong>Message:</strong><br><span class="pre-line">{{ d.message }}</span></p>
 
       {% if d.resolution_note %}
         <p class="mb-1"><strong>Resolution note:</strong><br>{{ d.resolution_note }}</p>
@@ -26,9 +27,10 @@
   </div>
 
   <form method="post" class="card p-3 shadow-sm mb-3">
+    {{ csrf_field() }}
     <div class="mb-3">
       <label class="form-label">Resolution note (optional)</label>
-      <textarea name="resolution_note" class="form-control" rows="3"></textarea>
+      <textarea name="resolution_note" class="form-control" rows="3">{{ d.resolution_note or '' }}</textarea>
     </div>
 
     <div class="d-flex gap-2">

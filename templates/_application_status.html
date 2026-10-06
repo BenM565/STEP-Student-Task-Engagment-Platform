@@ -1,0 +1,3 @@
+{# Application status badge; expects `application` #}
+{% set _a = {'pending': ('Pending', 'text-bg-secondary'), 'accepted': ('Selected', 'text-bg-success'), 'rejected': ('Not selected', 'text-bg-light border'), 'withdrawn': ('Withdrawn', 'text-bg-light border')} %}
+<span class="badge {{ _a.get(application.status, ('', 'text-bg-secondary'))[1] }}">{{ _a.get(application.status, (application.status|capitalize, ''))[0] }}</span>

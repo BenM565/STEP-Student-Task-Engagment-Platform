@@ -27,6 +27,7 @@
           </div>
         {% endif %}
         <form method="post">
+          {{ csrf_field() }}
           {% if source_run %}<input type="hidden" name="source_run_id" value="{{ source_run.id }}">{% endif %}
           <div class="mb-3">
             <label class="form-label">Title</label>
@@ -39,6 +40,10 @@
           <div class="mb-3">
             <label class="form-label">Estimated hours</label>
             <input name="estimated_hours" type="number" min="1" class="form-control" placeholder="e.g., 12" value="{{ form.estimated_hours or '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Deadline <span class="text-muted small">(optional)</span></label>
+            <input name="deadline" type="date" class="form-control" value="{{ form.deadline or '' }}">
           </div>
           <div class="d-flex gap-2">
             <button class="btn btn-primary">Create Task</button>

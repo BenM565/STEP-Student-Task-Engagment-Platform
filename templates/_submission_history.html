@@ -1,0 +1,32 @@
+{# Submission history for a task; expects `task`, and `can_review` for the company view #}
+{% set sub_badge = {'submitted': ('Awaiting review', 'text-bg-warning'), 'approved': ('Approved', 'text-bg-success'), 'revision_requested': ('Changes requested', 'text-bg-danger')} %}
+{% for s in task.submissions|reverse %}
+  <div class="border rounded p-3 mb-3 bg-white">
+    <div class="d-flex justify-content-between gap-2 mb-2">
+      <div class="small text-muted">Submission {{ task.submissions|length - loop.index0 }} · {{ s.created_at.strftime('%d %b %Y %H:%M') }}
+        {% if task.deadline and s.created_at.date() > task.deadline %}<span class="badge text-bg-light border ms-1">After deadline</span>{% endif %}
+      </div>
+      <span class="badge {{ sub_badge[s.status][1] }}">{{ sub_badge[s.status][0] }}</span>
+    </div>
+    <div class="small pre-line mb-2">{{ s.message }}</div>
+    {% if s.link %}<div class="small mb-1"><i class="bi bi-link-45deg me-1"></i><a href="{{ s.link }}" target="_blank" rel="noopener noreferrer nofollow">{{ s.link }}</a></div>{% endif %}
+    {% if s.file_stored_name %}<div class="small mb-1"><i class="bi bi-paperclip me-1"></i><a href="{{ url_for('marketplace.submission_file', submission_id=s.id) }}">{{ s.file_original_name }}</a> <span class="text-muted">({{ (s.file_size / 1024)|round(1) }} KB)</span></div>{% endif %}
+    {% if s.feedback %}
+      <div class="small border-start border-3 ps-2 mt-2"><span class="fw-semibold">Company feedback:</span> <span class="pre-line">{{ s.feedback }}</span></div>
+    {% endif %}
+    {% if can_review and s.status == 'submitted' and task.status == 'in_progress' %}
+      <form method="post" action="{{ url_for('marketplace.review_submission', submission_id=s.id) }}" class="mt-3">
+        {{ csrf_field() }}
+        <label class="form-label small fw-semibold" for="feedback-{{ s.id }}">Feedback for the student</label>
+        <textarea id="feedback-{{ s.id }}" name="feedback" class="form-control form-control-sm mb-2" rows="3"
+                  placeholder="Required if you request changes. Optional when approving."></textarea>
+        <div class="d-flex gap-2">
+          <button name="action" value="approve" class="btn btn-sm btn-success" onclick="return confirm('Approve this work and complete the task?');">Approve and complete</button>
+          <button name="action" value="revise" class="btn btn-sm btn-outline-danger">Request changes</button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+{% else %}
+  <p class="small text-muted mb-0">No work submitted yet.</p>
+{% endfor %}

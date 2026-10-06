@@ -64,7 +64,7 @@ def test_other_company_cannot_prefill_or_link_task_from_foreign_run(app, client,
     html = client.get(f"/tasks/new?from_run={run.id}").get_data(as_text=True)
     assert "User research and redesign proposal" not in html
 
-    client.post("/tasks/new", data={"title": "B task", "requirements": "", "estimated_hours": "",
+    client.post("/tasks/new", data={"csrf_token": CSRF, "title": "B task", "requirements": "", "estimated_hours": "",
                                     "source_run_id": str(run.id)})
     task = step_app.Task.query.one()
     assert task.company_id == b.id
@@ -82,12 +82,16 @@ def test_existing_applicant_routes_are_owner_only(app, client, make_user):
     step_app.db.session.commit()
 
     login(client, b)
-    assert client.get(f"/company/task/{task.id}/applicants").status_code == 404
-    assert client.get(f"/company/application/{application.id}/select").status_code == 404
+    # legacy URL redirects to the manage page, which is owner-only
+    assert client.get(f"/company/task/{task.id}/applicants", follow_redirects=True).status_code == 404
+    assert client.get(f"/company/tasks/{task.id}").status_code == 404
+    assert client.post(f"/company/applications/{application.id}/select", data={"csrf_token": CSRF}).status_code == 404
     assert step_app.db.session.get(step_app.Application, application.id).status == "pending"
 
     client.get("/logout")
     login(client, a)
-    assert client.get(f"/company/task/{task.id}/applicants").status_code == 200
-    assert client.get(f"/company/application/{application.id}/select").status_code == 302
+    assert client.get(f"/company/tasks/{task.id}").status_code == 200
+    # selection changes state, so GET is not allowed
+    assert client.get(f"/company/applications/{application.id}/select").status_code == 405
+    assert client.post(f"/company/applications/{application.id}/select", data={"csrf_token": CSRF}).status_code == 302
     assert step_app.db.session.get(step_app.Application, application.id).status == "accepted"

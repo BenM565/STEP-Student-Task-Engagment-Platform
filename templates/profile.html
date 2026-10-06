@@ -4,7 +4,7 @@
 {% block content %}
 
 
-{# Allow users to update profile fields and optionally change password
+{# Allow users to update profile fields; passwords change on /account/password #}
 
 {#Student-only fields are wrapped in a role check#}
 {# Email is displayed read-only per current backend behavior#}
@@ -23,6 +23,7 @@
         </h5>
 
         <form method="post" class="row g-3">
+          {{ csrf_field() }}
          {# Name (both roles)#}
           <div class="col-md-6">
             <label class="form-label">Name</label>
@@ -56,10 +57,21 @@
             </div>
           {% endif %}
 
-        {# Optional password change (both roles). Leave blank to keep current password#}
-          <div class="col-12">
-            <label class="form-label">Change password (optional)</label>
-            <input name="password" type="password" class="form-control" placeholder="Leave blank to keep current password">
+          {# Company-only fields shown to students on task pages #}
+          {% if user.role == 'company' %}
+            <div class="col-12">
+              <label class="form-label">About the company</label>
+              <textarea name="about" class="form-control" rows="3" placeholder="What you do and what students can expect working with you">{{ user.about or '' }}</textarea>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">Website</label>
+              <input name="website" class="form-control" value="{{ user.website or '' }}" placeholder="https://example.com">
+            </div>
+          {% endif %}
+
+          <div class="col-12 small">
+            <i class="bi bi-key me-1"></i><a href="{{ url_for('accounts.change_password') }}">Change password</a>
+            {% if user.role == 'student' %} · <a href="{{ url_for('marketplace.portfolio', student_id=user.id) }}">View my portfolio</a>{% endif %}
           </div>
 
           {# Save / Cancel actions#}

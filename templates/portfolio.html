@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ student.name }} · STEP portfolio{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="mb-1">{{ student.name }}{% if student.verified %} <span class="badge bg-success align-middle">Verified student</span>{% endif %}</h5>
+        {% if summary %}
+          <div class="mb-2"><i class="bi bi-star-fill text-warning"></i> {{ summary[0] }} average from {{ summary[1] }} review{{ 's' if summary[1] != 1 }}</div>
+        {% endif %}
+        <div class="small text-muted mb-3">{{ completed|length }} completed task{{ 's' if completed|length != 1 }} on STEP</div>
+        {% if student.skills %}<div class="small mb-2"><span class="fw-semibold">Skills:</span> {{ student.skills }}</div>{% endif %}
+        {% if student.grades %}<div class="small mb-2"><span class="fw-semibold">Grades:</span> {{ student.grades }}</div>{% endif %}
+        {% if student.projects %}<div class="small"><span class="fw-semibold">Projects:</span> <div class="pre-line">{{ student.projects }}</div></div>{% endif %}
+        {% if current_user.id == student.id %}
+          <a href="{{ url_for('profile') }}" class="btn btn-sm btn-outline-secondary mt-3">Edit profile</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <h5 class="mb-3">Completed work</h5>
+    {% for t in completed %}
+      {% set r = reviews.get(t.id) %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between gap-2">
+            <div>
+              <div class="fw-semibold">{{ t.title }}</div>
+              <div class="small text-muted">{{ t.company.name }}{% if t.completed_at %} · completed {{ t.completed_at.strftime('%b %Y') }}{% endif %}</div>
+            </div>
+            {% if r %}<div class="text-nowrap">{% for i in range(5) %}<i class="bi bi-star{{ '-fill text-warning' if i < r.rating else '' }}"></i>{% endfor %}</div>{% endif %}
+          </div>
+          {% if r and r.comment %}<div class="small mt-2 border-start border-3 ps-2 pre-line">"{{ r.comment }}" <span class="text-muted">— {{ t.company.name }}</span></div>{% endif %}
+        </div>
+      </div>
+    {% else %}
+      <p class="text-muted">No completed tasks yet.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

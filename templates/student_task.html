@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }} · STEP{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">{{ task.title }}</h4>
+  {% include "_task_status.html" %}
+</div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    {% if task.status == 'in_progress' %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h6 class="fw-bold mb-3">Submit your work</h6>
+          {% if awaiting_review %}
+            <p class="small text-muted mb-0"><i class="bi bi-hourglass-split me-1"></i>Your latest submission is with the company for review. You'll be notified when they respond.</p>
+          {% else %}
+            <form method="post" enctype="multipart/form-data">
+              {{ csrf_field() }}
+              <div class="mb-3">
+                <label class="form-label small fw-semibold" for="message">What are you handing in?</label>
+                <textarea id="message" name="message" class="form-control" rows="5" required maxlength="10000"
+                          placeholder="Summarise what you did, how it meets the acceptance criteria, and anything the company should know.">{{ form.message or '' }}</textarea>
+              </div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold" for="link">Link <span class="text-muted fw-normal">(optional)</span></label>
+                <input id="link" name="link" type="url" class="form-control" placeholder="https://github.com/… or a shared folder" value="{{ form.link or '' }}">
+              </div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold" for="file">File <span class="text-muted fw-normal">(optional)</span></label>
+                <input id="file" name="file" type="file" class="form-control">
+                <div class="form-text">PDF, Office, images, ZIP and similar, up to {{ config['SUBMISSION_MAX_FILE_MB'] }} MB.</div>
+              </div>
+              <button class="btn btn-primary">Submit work</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    {% elif task.status == 'completed' %}
+      <div class="alert alert-success d-block">
+        <i class="bi bi-check-circle me-1"></i>This task is complete. {% if task.review %}The company rated your work {{ task.review.rating }}/5.{% endif %}
+        <a href="{{ url_for('marketplace.portfolio', student_id=current_user.id) }}">See your portfolio</a>.
+      </div>
+    {% endif %}
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Submissions and feedback</h6>
+        {% with can_review = False %}{% include "_submission_history.html" %}{% endwith %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">Brief</h6>
+        <div class="small text-muted mb-2">
+          {{ task.company.name }}
+          {% if task.estimated_hours %} · est. {{ task.estimated_hours }} hours{% endif %}
+          {% if task.deadline %} · due {{ task.deadline.strftime('%d %b %Y') }}{% endif %}
+        </div>
+        <div class="small pre-line">{{ task.requirements or 'No description provided.' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

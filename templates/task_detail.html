@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }} · STEP{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between gap-2 mb-1">
+          <h4 class="mb-0">{{ task.title }}</h4>
+          <div>{% include "_task_status.html" %}</div>
+        </div>
+        <div class="text-muted small mb-3">
+          {{ task.company.name }}
+          {% if task.estimated_hours %} · est. {{ task.estimated_hours }} hours{% endif %}
+          {% if task.deadline %} · due {{ task.deadline.strftime('%d %b %Y') }}{% endif %}
+          {% if task.created_at %} · posted {{ task.created_at.strftime('%d %b %Y') }}{% endif %}
+        </div>
+        <div class="pre-line">{{ task.requirements or 'No description provided.' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    {% if current_user.role == 'student' %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          {% if application and application.status != 'withdrawn' %}
+            <h6 class="fw-bold mb-2">Your application</h6>
+            <p class="mb-2">{% include "_application_status.html" %}</p>
+            {% if application.status == 'accepted' %}
+              <a href="{{ url_for('marketplace.student_task', task_id=task.id) }}" class="btn btn-primary btn-sm">Go to task</a>
+            {% elif application.status == 'pending' %}
+              <p class="small text-muted">The company hasn't decided yet. You'll get a notification.</p>
+              <form method="post" action="{{ url_for('marketplace.withdraw', application_id=application.id) }}" onsubmit="return confirm('Withdraw your application?');">
+                {{ csrf_field() }}
+                <button class="btn btn-sm btn-outline-secondary">Withdraw</button>
+              </form>
+            {% endif %}
+          {% elif task.status == 'open' %}
+            <h6 class="fw-bold mb-2">Apply for this task</h6>
+            <form method="post" action="{{ url_for('marketplace.apply', task_id=task.id) }}">
+              {{ csrf_field() }}
+              <label class="form-label small" for="cover_note">Why you're a good fit <span class="text-muted">(optional)</span></label>
+              <textarea id="cover_note" name="cover_note" class="form-control mb-2" rows="5" maxlength="2000"
+                        placeholder="Relevant skills, similar work, and when you could start">{{ application.cover_note if application else '' }}</textarea>
+              <div class="form-text mb-2">The company will also see your profile and portfolio.</div>
+              <button class="btn btn-primary w-100">Apply</button>
+            </form>
+          {% else %}
+            <p class="text-muted small mb-0">This task is not accepting applications.</p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">About {{ task.company.name }}</h6>
+        <p class="small text-muted mb-2 pre-line">{{ task.company.about or 'No company description yet.' }}</p>
+        {% if task.company.website %}
+          <a class="small" href="{{ task.company.website }}" target="_blank" rel="noopener noreferrer nofollow">{{ task.company.website }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

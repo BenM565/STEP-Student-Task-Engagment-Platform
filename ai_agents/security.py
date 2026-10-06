@@ -1,29 +1,10 @@
-# Access control and CSRF protection for the AI Agents area.
-# The rest of STEP has no CSRF protection; agent runs spend money and touch
-# company documents, so every POST in this blueprint requires a token.
+# Access control for the AI Agents area. CSRF is enforced app-wide by
+# core/security.py; this module keeps the AI templates' token helper name.
 
-import hmac
-import secrets
-
-from flask import abort, current_app, flash, redirect, request, session, url_for
+from flask import current_app, flash, redirect, url_for
 from flask_login import current_user
 
-_SESSION_KEY = "ai_agents_csrf"
-
-
-def csrf_token() -> str:
-    token = session.get(_SESSION_KEY)
-    if not token:
-        token = secrets.token_urlsafe(32)
-        session[_SESSION_KEY] = token
-    return token
-
-
-def verify_csrf() -> None:
-    expected = session.get(_SESSION_KEY)
-    sent = request.form.get("csrf_token", "")
-    if not expected or not hmac.compare_digest(expected, sent):
-        abort(400, description="Your session expired or the form was submitted from another site. Reload the page and try again.")
+from core.security import csrf_token  # noqa: F401  (exposed to templates as ai_csrf_token)
 
 
 def guard_company_area():
@@ -33,6 +14,4 @@ def guard_company_area():
     if getattr(current_user, "role", None) != "company":
         flash("AI agents are available to company accounts only.", "danger")
         return redirect(url_for("dashboard"))
-    if request.method == "POST":
-        verify_csrf()
     return None

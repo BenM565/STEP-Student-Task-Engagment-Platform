@@ -1,46 +1,41 @@
 <!--code layout is from chatgpt-->
 <!--inside is customised with my own code-->
 {% extends "base.html" %}
+{% block title %}Raise a dispute · STEP{% endblock %}
 {% block content %}
-
-<div class="container mt-3">
-  <h4 class="mb-3">Raise a dispute</h4>
-
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
-
-  <form method="post" class="card p-3 shadow-sm">
-    <div class="mb-3">
-      <label class="form-label">Related task (optional)</label>
-      <select name="task_id" class="form-select">
-        <option value="">No specific task</option>
-        {% for t in user_tasks %}
-          <option value="{{ t.id }}">[{{ t.id }}] {{ t.title }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Against user id (optional)</label>
-      <input type="text" name="against_user_id" class="form-control" placeholder="Enter user id if known">
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Describe the issue</label>
-      <textarea name="message" class="form-control" rows="4" required></textarea>
-    </div>
-
-    <button class="btn btn-primary">Submit dispute</button>
-    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
-  </form>
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <h4 class="mb-3">Raise a dispute</h4>
+    <p class="text-muted small">Tell the STEP team about a problem with a task or another user. An admin will review it.</p>
+    <form method="post" class="card p-3 shadow-sm">
+      {{ csrf_field() }}
+      <div class="mb-3">
+        <label class="form-label">Related task (optional)</label>
+        <select name="task_id" class="form-select">
+          <option value="">No specific task</option>
+          {% for t in user_tasks %}
+            <option value="{{ t.id }}">{{ t.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Who is it about? (optional)</label>
+        <select name="against_user_id" class="form-select">
+          <option value="">Nobody specific</option>
+          {% for u in counterparties %}
+            <option value="{{ u.id }}">{{ u.name }} ({{ u.role }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Describe the issue</label>
+        <textarea name="message" class="form-control" rows="5" required maxlength="5000"></textarea>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary">Submit dispute</button>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
 </div>
-
 {% endblock %}

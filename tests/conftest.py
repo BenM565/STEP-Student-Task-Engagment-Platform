@@ -182,9 +182,12 @@ def app(tmp_path):
         AI_EXECUTION_MODE="inline",
         AI_WEB_SEARCH_ENABLED=True,
         AI_MAX_RUNS_PER_DAY=50,
+        SUBMISSION_UPLOAD_DIR=str(tmp_path / "submissions"),
+        MAIL_EVENT_EMAILS=True,
         ANTHROPIC_API_KEY=None,
     )
     flask_app.fake_provider = provider
+    flask_app.extensions["outbox"] = []
     with flask_app.app_context():
         step_app.db.create_all()
         yield flask_app
@@ -213,11 +216,14 @@ def make_user(app):
     return _make
 
 
-def login(client, user):
-    resp = client.post("/login", data={"email": user.email, "password": "pw"})
+def login(client, user, password="pw"):
+    # Every POST needs the session's CSRF token; seed it before logging in
+    with client.session_transaction() as sess:
+        sess["_csrf_token"] = CSRF
+    resp = client.post("/login", data={"email": user.email, "password": password, "csrf_token": CSRF})
     assert resp.status_code == 302, "login failed"
     with client.session_transaction() as sess:
-        sess["ai_agents_csrf"] = CSRF
+        sess["_csrf_token"] = CSRF
 
 
 def ba_form(**overrides):
