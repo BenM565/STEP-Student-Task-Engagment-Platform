@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+{% with heading="AI Agents", subheading="Choose an AI specialist to help with your problem. Agents do the analysis; where hands-on work remains, they draft a STEP task for a student." %}
+  {% include "ai_agents/_subnav.html" %}
+{% endwith %}
+
+<div class="row g-3">
+  {% for agent, record in agents %}
+    <div class="col-md-6 col-xl-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="d-inline-flex align-items-center justify-content-center rounded bg-primary-subtle text-primary" style="width:2.25rem;height:2.25rem;">
+              <i class="bi bi-{{ agent.icon }} fs-5"></i>
+            </span>
+            <div>
+              <h6 class="fw-bold mb-0">{{ agent.name }}</h6>
+              <div class="small text-muted">{{ agent.category }}</div>
+            </div>
+          </div>
+          <p class="small mb-3">{{ agent.tagline }}</p>
+
+          <div class="small fw-semibold mb-1">What it does</div>
+          <ul class="small text-muted ps-3 mb-3">
+            {% for c in agent.capabilities %}<li>{{ c }}</li>{% endfor %}
+          </ul>
+
+          <div class="small fw-semibold mb-1">Example problems</div>
+          <ul class="small text-muted ps-3 mb-3">
+            {% for e in agent.example_use_cases %}<li>“{{ e }}”</li>{% endfor %}
+          </ul>
+
+          <div class="mt-auto d-flex justify-content-between align-items-center">
+            <span class="small text-muted">v{{ agent.version }}</span>
+            <a href="{{ url_for('ai_agents.workspace', slug=agent.slug) }}" class="btn btn-sm btn-primary">Use agent</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="col-12"><p class="text-muted">No AI agents are available to your company yet.</p></div>
+  {% endfor %}
+</div>
+
+{% if recent %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold mb-0">Recent runs</h6>
+        <a href="{{ url_for('ai_agents.history') }}" class="small">View all</a>
+      </div>
+      <ul class="list-group list-group-flush small">
+        {% for run in recent %}
+          <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+            <div class="text-truncate me-3">
+              <a href="{{ url_for('ai_agents.run_detail', run_id=run.id) }}" class="fw-semibold">{{ run.title or 'Untitled run' }}</a>
+              <div class="text-muted">{{ agent_names.get(run.agent_slug, run.agent_slug) }} · {{ run.created_at.strftime('%d %b %Y %H:%M') }} UTC</div>
+            </div>
+            {% include "ai_agents/_status_badge.html" %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

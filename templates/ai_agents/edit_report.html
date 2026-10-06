@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+{% with heading="Edit result", subheading=run.title %}
+  {% include "ai_agents/_subnav.html" %}
+{% endwith %}
+
+<div class="card shadow-sm">
+  <div class="card-body p-4">
+    <p class="small text-muted">
+      Edit the result before you export or share it. Your edited version is stored separately; the original AI output is kept unchanged for reference.
+      To change the proposed student task, use Create STEP task, which lets you edit it in the task form.
+    </p>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ ai_csrf_token() }}">
+      <textarea name="report" class="form-control font-monospace small mb-3" rows="28">{{ report }}</textarea>
+      <div class="d-flex flex-wrap gap-2">
+        <button class="btn btn-primary" name="action" value="save">Save edits</button>
+        <a href="{{ url_for('ai_agents.run_detail', run_id=run.id) }}" class="btn btn-outline-secondary">Cancel</a>
+        {% if run.edited_report %}
+          <button class="btn btn-outline-danger ms-auto" name="action" value="reset"
+                  onclick="return confirm('Discard your edits and return to the original AI result?');">Discard edits</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

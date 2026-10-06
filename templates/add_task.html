@@ -13,19 +13,32 @@
   <div class="col-lg-7">
     <div class="card shadow-sm">
       <div class="card-body p-4">
+        {% set form = form or {} %}
         <h5 class="mb-3">Create a new task</h5>
+        {% if source_run %}
+          {# Pre-filled from an AI agent result; nothing is published until the company submits #}
+          <div class="alert alert-info small d-flex align-items-start gap-2">
+            <i class="bi bi-stars mt-1"></i>
+            <div>
+              Pre-filled from your AI agent result
+              <a href="{{ url_for('ai_agents.run_detail', run_id=source_run.id) }}">#{{ source_run.id }}</a>.
+              Review and edit everything below before creating the task. Nothing is published until you click Create Task.
+            </div>
+          </div>
+        {% endif %}
         <form method="post">
+          {% if source_run %}<input type="hidden" name="source_run_id" value="{{ source_run.id }}">{% endif %}
           <div class="mb-3">
             <label class="form-label">Title</label>
-            <input name="title" required class="form-control" placeholder="e.g., Build login page with Bootstrap">
+            <input name="title" required maxlength="200" class="form-control" placeholder="e.g., Build login page with Bootstrap" value="{{ form.title or '' }}">
           </div>
           <div class="mb-3">
             <label class="form-label">Requirements</label>
-            <textarea name="requirements" rows="4" class="form-control" placeholder="Skills required, deliverables, acceptance criteria"></textarea>
+            <textarea name="requirements" rows="{{ 18 if form.requirements else 4 }}" class="form-control" placeholder="Skills required, deliverables, acceptance criteria">{{ form.requirements or '' }}</textarea>
           </div>
           <div class="mb-3">
             <label class="form-label">Estimated hours</label>
-            <input name="estimated_hours" type="number" min="1" class="form-control" placeholder="e.g., 12">
+            <input name="estimated_hours" type="number" min="1" class="form-control" placeholder="e.g., 12" value="{{ form.estimated_hours or '' }}">
           </div>
           <div class="d-flex gap-2">
             <button class="btn btn-primary">Create Task</button>

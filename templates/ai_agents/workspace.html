@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+{% with heading=agent.name ~ " Agent", subheading=agent.tagline %}
+  {% include "ai_agents/_subnav.html" %}
+{% endwith %}
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <p class="mb-4">{{ agent.workspace_prompt }}</p>
+
+        {% if errors.get('__all__') %}
+          <div class="alert alert-danger d-block">{{ errors['__all__'] }}</div>
+        {% endif %}
+        {% if parent_run_id %}
+          <div class="alert alert-secondary small d-block">
+            Running again from <a href="{{ url_for('ai_agents.run_detail', run_id=parent_run_id) }}">run #{{ parent_run_id }}</a>. Adjust the input below if needed.
+          </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data" id="agentForm" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ ai_csrf_token() }}">
+          {% if parent_run_id %}<input type="hidden" name="rerun" value="{{ parent_run_id }}">{% endif %}
+
+          {% for field in agent.input_fields %}
+            <div class="mb-3">
+              <label class="form-label fw-semibold" for="f_{{ field.name }}">
+                {{ field.label }}{% if field.required %} <span class="text-danger">*</span>{% endif %}
+              </label>
+              {% if field.widget == 'textarea' %}
+                <textarea class="form-control {% if errors.get(field.name) %}is-invalid{% endif %}" id="f_{{ field.name }}"
+                          name="{{ field.name }}" rows="{{ field.rows }}" placeholder="{{ field.placeholder }}"
+                          {% if field.required %}required{% endif %}>{{ values.get(field.name, '') }}</textarea>
+              {% elif field.widget == 'select' %}
+                <select class="form-select {% if errors.get(field.name) %}is-invalid{% endif %}" id="f_{{ field.name }}" name="{{ field.name }}">
+                  {% for value, label in field.options %}
+                    <option value="{{ value }}" {% if values.get(field.name) == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              {% else %}
+                <input class="form-control {% if errors.get(field.name) %}is-invalid{% endif %}" id="f_{{ field.name }}"
+                       name="{{ field.name }}" value="{{ values.get(field.name, '') }}" placeholder="{{ field.placeholder }}"
+                       {% if field.required %}required{% endif %}>
+              {% endif %}
+              {% if errors.get(field.name) %}
+                <div class="invalid-feedback">{{ errors[field.name] }}</div>
+              {% elif field.help_text %}
+                <div class="form-text">{{ field.help_text }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+
+          {% if agent.accepts_files %}
+            <div class="mb-4">
+              <label class="form-label fw-semibold" for="f_files">Supporting documents</label>
+              {% if prior_files %}
+                <div class="border rounded p-2 mb-2 small">
+                  <div class="text-muted mb-1">Documents from the previous run</div>
+                  {% for f in prior_files %}
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="reuse_file_ids" value="{{ f.id }}" id="reuse_{{ f.id }}" checked>
+                      <label class="form-check-label" for="reuse_{{ f.id }}">{{ f.original_filename }}</label>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              <input class="form-control {% if errors.get('files') %}is-invalid{% endif %}" type="file" id="f_files" name="files" multiple
+                     accept="{{ agent.allowed_extensions|sort|join(',') }}">
+              {% if errors.get('files') %}
+                <div class="invalid-feedback">{{ errors['files'] }}</div>
+              {% else %}
+                <div class="form-text">
+                  Optional. Up to {{ agent.max_files }} files ({{ agent.allowed_extensions|sort|join(', ') }}), {{ config['AI_MAX_FILE_BYTES'] // (1024*1024) }} MB each.
+                  Only the documents you attach here are shared with this agent.
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          <div class="d-flex align-items-center gap-3">
+            <button type="submit" class="btn btn-primary" id="runBtn">
+              <span class="spinner-border spinner-border-sm me-2 d-none" id="runSpinner" role="status" aria-hidden="true"></span>
+              <span id="runLabel">{{ agent.run_button_label }}</span>
+            </button>
+            <a href="{{ url_for('ai_agents.catalogue') }}" class="btn btn-outline-secondary">Cancel</a>
+            <span class="small text-muted d-none" id="runHint">The agent is working. This can take a minute or two; please keep this page open.</span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2"><i class="bi bi-{{ agent.icon }} me-2 text-primary"></i>About this agent</h6>
+        <p class="small text-muted">{{ agent.description }}</p>
+        <div class="small fw-semibold mb-1">You will get</div>
+        <ul class="small text-muted ps-3 mb-0">
+          {% for c in agent.capabilities %}<li>{{ c }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-body small text-muted">
+        <h6 class="fw-bold text-body mb-2"><i class="bi bi-shield-lock me-2"></i>Your data</h6>
+        Your input and documents are visible only to your company account. They are sent to STEP's AI provider to produce
+        this result and are stored in your agent history. Review AI output before relying on it.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Prevent double submission (each run costs money) and show progress
+  document.getElementById('agentForm').addEventListener('submit', function () {
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true;
+    document.getElementById('runSpinner').classList.remove('d-none');
+    document.getElementById('runLabel').textContent = 'Running…';
+    document.getElementById('runHint').classList.remove('d-none');
+  });
+</script>
+{% endblock %}

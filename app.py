@@ -2,15 +2,13 @@
 # for flask SQLAlchemy "Flask SQLAlchemy Tutorial for Database - GeeksforGeeks"
 # app route layout from ChatGPT
 
-from flask_sqlalchemy import SQLAlchemy
-
 print("APP.PY STARTED")
 
 import os
 
 from dotenv import load_dotenv
 # itteration 1 of the code
-from flask import Flask, render_template, redirect, url_for, flash, request
+from flask import Flask, render_template, redirect, url_for, flash, request, abort
 from flask_login import (
     LoginManager,
     login_user,
@@ -47,7 +45,10 @@ login_manager = LoginManager(app)
 # Configure the login view endpoint name used by @login_required
 login_manager.login_view = "login"
 
-db = SQLAlchemy(app)
+# db lives in extensions.py so other packages (e.g. ai_agents) can share it without importing app.py
+from extensions import db
+
+db.init_app(app)
 
 # Database Models
 
@@ -511,10 +512,13 @@ def add_task():
         title = (request.form.get("title") or "").strip()
         requirements = (request.form.get("requirements") or "").strip()
         est_raw = (request.form.get("estimated_hours") or "").strip()
+        # Set when the form was pre-filled from an AI agent result
+        source_run = ai_task_source_run(request.form.get("source_run_id", type=int))
         # Basic validation for title
         if not title:
             flash("Title is required.", "danger")
-            return render_template("add_task.html")
+            form = {"title": title, "requirements": requirements, "estimated_hours": est_raw}
+            return render_template("add_task.html", form=form, source_run=source_run)
         # Parse estimated hours as integer if provided
         try:
             estimated_hours = int(est_raw) if est_raw else None
@@ -528,11 +532,43 @@ def add_task():
             company_id=current_user.id,
         )
         db.session.add(task)
+        db.session.flush()
+        # Link the AI run to the task it produced so the handoff is traceable
+        if source_run is not None:
+            source_run.created_task_id = task.id
         db.session.commit()
         flash("Task created.", "success")
         return redirect(url_for("dashboard"))
+    # GET ?from_run=<id> pre-fills the form from an AI agent's proposed task
+    from_run = request.args.get("from_run", type=int)
+    if from_run:
+        source_run = ai_task_source_run(from_run)
+        form = ai_task_form_from_run(source_run)
+        if form is None:
+            flash("That AI result does not include a task to pre-fill.", "warning")
+            return render_template("add_task.html")
+        return render_template("add_task.html", form=form, source_run=source_run)
     # Render the blank task form on GET
     return render_template("add_task.html")
+
+
+def ai_task_source_run(run_id):
+    # Return the current company's AI run, or None (never another company's run)
+    if not run_id:
+        return None
+    return AgentRun.query.filter_by(id=run_id, company_id=current_user.id).first()
+
+
+def ai_task_form_from_run(run):
+    # Map an AI agent's proposed task onto this form's fields
+    if run is None:
+        return None
+    agent = get_agent(run.agent_slug)
+    if agent is None:
+        return None
+    output = ai_parsed_output(agent, run)
+    draft = agent.task_draft(output) if output is not None else None
+    return draft_to_task_form(draft) if draft is not None else None
 
 # iteration 2
 # app routes from ChatGPT
@@ -791,6 +827,10 @@ def view_applicants(task_id):
         flash("Company access only.", "danger")
         return redirect(url_for("dashboard"))
 
+    # Only the company that owns the task may see its applicants
+    if not Task.query.filter_by(id=task_id, company_id=current_user.id).first():
+        abort(404)
+
     applicants = db.session.execute(
         text("""
         SELECT a.id, u.name, u.email, a.status
@@ -820,6 +860,10 @@ def select_candidate(application_id):
         {"id": application_id}
     ).scalar()
 
+    # Only the company that owns the task may select a candidate for it
+    if task_id is None or not Task.query.filter_by(id=task_id, company_id=current_user.id).first():
+        abort(404)
+
     db.session.execute(
         text("""
         UPDATE applications
@@ -844,9 +888,20 @@ def select_candidate(application_id):
     return redirect(url_for("view_applicants", task_id=task_id))
 
 
+# AI Agents (ai_agents/ package): catalogue, workspace, run history and the
+# AI -> STEP task handoff used by add_task above
+from ai_agents import draft_to_task_form, init_ai_agents
+from ai_agents.models import AgentRun
+from ai_agents.registry import get_agent
+from ai_agents.service import parsed_output as ai_parsed_output, sync_agent_records
+
+init_ai_agents(app, task_model=Task)
+
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        sync_agent_records()
     app.run(debug=True)
 
 

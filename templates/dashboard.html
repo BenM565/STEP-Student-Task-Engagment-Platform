@@ -84,6 +84,24 @@
 
     {# COMPANY DASHBOARD #}
     {% elif user.role == 'company' %}
+      <div class="col-12">
+        <div class="card shadow-sm border-primary-subtle">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div>
+              <h6 class="fw-bold mb-1"><i class="bi bi-cpu me-2 text-primary"></i>AI Agents</h6>
+              <p class="small text-muted mb-0">
+                Give a business problem to a specialist AI agent. It handles the analysis and, where hands-on work remains,
+                drafts a STEP task for a student that you review before posting.
+              </p>
+            </div>
+            <div class="d-flex gap-2 flex-shrink-0">
+              <a href="{{ url_for('ai_agents.catalogue') }}" class="btn btn-sm btn-primary">Open AI Agents</a>
+              <a href="{{ url_for('ai_agents.history') }}" class="btn btn-sm btn-outline-secondary">History</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="col-12 mb-2 d-flex justify-content-between align-items-center">
         <h6 class="fw-bold mb-0">Your posted tasks</h6>
         <a href="{{ url_for('add_task') }}" class="btn btn-sm btn-primary">
@@ -98,9 +116,7 @@
               <li class="list-group-item d-flex justify-content-between align-items-center">
                 <div>
                   <div class="fw-semibold">{{ t.title }}</div>
-                  <div class="small text-muted mb-1">
-                    {{ t.requirements or 'No description provided.' }}
-                  </div>
+                  <div class="small text-muted mb-1" style="white-space: pre-line;">{{ t.requirements or 'No description provided.' }}</div>
                   {% if t.estimated_hours %}
                     <div class="small text-muted">
                       Estimated hours: {{ t.estimated_hours }}

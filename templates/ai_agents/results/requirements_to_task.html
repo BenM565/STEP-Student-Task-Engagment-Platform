@@ -1,0 +1,47 @@
+{# Structured view of RequirementsToTaskOutput; expects `output`, `run`, `draft`, `created_task` #}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">What you need</h6>
+    <p class="mb-3">{{ output.interpretation }}</p>
+    <div class="small">
+      {% if output.suitable_for_student %}
+        <span class="badge text-bg-success me-1">Suitable for a STEP student</span>
+      {% else %}
+        <span class="badge text-bg-warning me-1">Check before posting</span>
+      {% endif %}
+      <span class="text-muted">{{ output.suitability_rationale }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3 border-success">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-person-workspace me-2 text-success"></i>Proposed STEP task</h6>
+      {% if not created_task %}
+        <a href="{{ url_for('add_task', from_run=run.id) }}" class="btn btn-sm btn-primary flex-shrink-0">Create STEP task</a>
+      {% endif %}
+    </div>
+    {% with task = output.task %}{% include "ai_agents/results/_task_draft.html" %}{% endwith %}
+    <p class="small text-muted mt-3 mb-0">Creating the task opens the normal STEP task form pre-filled with this draft. You can edit everything before it is posted.</p>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2"><i class="bi bi-cpu me-2"></i>What an AI agent can do now</h6>
+        <ul class="small ps-3 mb-0">{% for i in output.ai_can_handle %}<li class="mb-1">{{ i }}</li>{% else %}<li class="text-muted">Nothing specific.</li>{% endfor %}</ul>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">Scoping notes</h6>
+        <ul class="small ps-3 mb-0">{% for i in output.scoping_notes %}<li class="mb-1">{{ i }}</li>{% else %}<li class="text-muted">None.</li>{% endfor %}</ul>
+      </div>
+    </div>
+  </div>
+</div>

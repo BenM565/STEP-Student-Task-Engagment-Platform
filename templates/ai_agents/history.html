@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+{% with heading="Agent history", subheading="Every agent run for your company, including failed runs." %}
+  {% include "ai_agents/_subnav.html" %}
+{% endwith %}
+
+<form method="get" class="card shadow-sm p-3 mb-3">
+  <div class="row g-2 align-items-end small">
+    <div class="col-md-4">
+      <label class="form-label">Agent</label>
+      <select name="agent" class="form-select form-select-sm">
+        <option value="">All agents</option>
+        {% for slug, name in agent_names.items() %}
+          <option value="{{ slug }}" {% if agent_filter == slug %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="">Any status</option>
+        <option value="succeeded" {% if status_filter == 'succeeded' %}selected{% endif %}>Completed</option>
+        <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <div class="form-check mb-1">
+        <input class="form-check-input" type="checkbox" name="saved" value="1" id="savedOnly" {% if saved_only %}checked{% endif %}>
+        <label class="form-check-label" for="savedOnly">Saved only</label>
+      </div>
+    </div>
+    <div class="col-md-3 d-flex gap-2">
+      <button class="btn btn-sm btn-primary flex-grow-1">Filter</button>
+      <a href="{{ url_for('ai_agents.history') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+    </div>
+  </div>
+</form>
+
+{% if runs %}
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover small align-middle mb-0">
+        <thead class="table-light">
+          <tr><th>Run</th><th>Agent</th><th>Started</th><th>Status</th><th class="text-end">Tokens</th><th class="text-end">Est. cost</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td style="max-width: 22rem;">
+                <a href="{{ url_for('ai_agents.run_detail', run_id=run.id) }}" class="fw-semibold d-block text-truncate">{{ run.title or 'Untitled run' }}</a>
+                <span class="text-muted">#{{ run.id }}{% if run.files %} · {{ run.files|length }} document{{ 's' if run.files|length != 1 }}{% endif %}</span>
+              </td>
+              <td>{{ agent_names.get(run.agent_slug, run.agent_slug) }}</td>
+              <td class="text-nowrap">{{ run.created_at.strftime('%d %b %Y %H:%M') }}</td>
+              <td>
+                {% include "ai_agents/_status_badge.html" %}
+                {% if run.status == 'failed' and run.error_message %}<div class="text-muted text-truncate" style="max-width: 14rem;" title="{{ run.error_message }}">{{ run.error_message }}</div>{% endif %}
+              </td>
+              <td class="text-end text-nowrap">{% if run.input_tokens is not none %}{{ '{:,}'.format((run.input_tokens or 0) + (run.output_tokens or 0)) }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if run.cost_usd is not none %}${{ '%.4f'|format(run.cost_usd) }}{% else %}—{% endif %}</td>
+              <td class="text-end text-nowrap">
+                {% if run.is_saved %}<i class="bi bi-bookmark-fill text-primary" title="Saved"></i>{% endif %}
+                {% if run.created_task_id %}<i class="bi bi-person-workspace text-success ms-1" title="STEP task created"></i>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% set last_page = ((total - 1) // page_size) + 1 %}
+  {% if last_page > 1 %}
+    <nav class="mt-3 d-flex justify-content-between align-items-center small">
+      <span class="text-muted">Page {{ page }} of {{ last_page }} · {{ total }} runs</span>
+      <div class="d-flex gap-2">
+        {% if page > 1 %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('ai_agents.history', agent=agent_filter, status=status_filter, saved='1' if saved_only else None, page=page-1) }}">Previous</a>{% endif %}
+        {% if page < last_page %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('ai_agents.history', agent=agent_filter, status=status_filter, saved='1' if saved_only else None, page=page+1) }}">Next</a>{% endif %}
+      </div>
+    </nav>
+  {% endif %}
+{% else %}
+  <div class="card shadow-sm"><div class="card-body text-muted">
+    No agent runs match. <a href="{{ url_for('ai_agents.catalogue') }}">Choose an agent</a> to get started.
+  </div></div>
+{% endif %}
+{% endblock %}

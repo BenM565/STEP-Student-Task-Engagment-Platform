@@ -1,0 +1,171 @@
+{# Structured view of BusinessAnalysisOutput; expects `output`, `run`, `draft`, `created_task` #}
+{% set pd = output.problem_definition %}
+{% set a = output.human_task_assessment %}
+{% set level = {'low': 'text-bg-light border', 'medium': 'text-bg-warning', 'high': 'text-bg-danger'} %}
+{% set priority = {'must': 'text-bg-primary', 'should': 'text-bg-info', 'could': 'text-bg-light border'} %}
+{% set owners = {'company': ('Company', 'text-bg-secondary'), 'ai_agent': ('AI agent', 'text-bg-info'), 'student': ('STEP student', 'text-bg-success')} %}
+
+<nav class="nav nav-pills small flex-nowrap overflow-auto mb-3">
+  <a class="nav-link py-1" href="#summary">Summary</a>
+  <a class="nav-link py-1" href="#problem">Problem</a>
+  <a class="nav-link py-1" href="#requirements">Requirements</a>
+  <a class="nav-link py-1" href="#stories">User stories</a>
+  <a class="nav-link py-1" href="#risks">Risks</a>
+  <a class="nav-link py-1" href="#questions">Open questions</a>
+  <a class="nav-link py-1" href="#next">Next steps</a>
+</nav>
+
+<div class="card shadow-sm mb-3" id="summary">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">Summary</h6>
+    <p class="mb-0">{{ output.summary }}</p>
+  </div>
+</div>
+
+{# AI -> human handoff #}
+<div class="card shadow-sm mb-3 {{ 'border-success' if a.recommended else '' }}">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+      <h6 class="fw-bold mb-0">
+        {% if a.recommended %}<i class="bi bi-person-check me-2 text-success"></i>Recommended next step: a STEP student task
+        {% else %}<i class="bi bi-person-dash me-2 text-muted"></i>No student task recommended yet{% endif %}
+      </h6>
+      {% if a.recommended and draft and not created_task %}
+        <a href="{{ url_for('add_task', from_run=run.id) }}" class="btn btn-sm btn-primary flex-shrink-0">Create STEP task</a>
+      {% endif %}
+    </div>
+    <p class="small text-muted mb-3">{{ a.rationale }}</p>
+    {% if a.recommended and a.suggested_task %}
+      <div class="border rounded p-3 bg-light">
+        {% with task = a.suggested_task %}{% include "ai_agents/results/_task_draft.html" %}{% endwith %}
+      </div>
+      <p class="small text-muted mt-2 mb-0">Creating the task opens the normal STEP task form pre-filled with this draft. You can edit everything before it is posted.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3" id="problem">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">Problem definition</h6>
+    <p>{{ pd.statement }}</p>
+    <p class="small"><span class="fw-semibold">Business context:</span> {{ pd.business_context }}</p>
+    <div class="row g-3 small">
+      <div class="col-md-6">
+        <div class="fw-semibold mb-1">Objectives</div>
+        <ul class="ps-3 mb-0">{% for i in pd.objectives %}<li>{{ i }}</li>{% endfor %}</ul>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-1">Stakeholders</div>
+        <ul class="ps-3 mb-0">{% for i in pd.stakeholders %}<li>{{ i }}</li>{% endfor %}</ul>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-1">In scope</div>
+        <ul class="ps-3 mb-0">{% for i in pd.in_scope %}<li>{{ i }}</li>{% endfor %}</ul>
+      </div>
+      <div class="col-md-6">
+        <div class="fw-semibold mb-1">Out of scope</div>
+        <ul class="ps-3 mb-0">{% for i in pd.out_of_scope %}<li>{{ i }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3" id="requirements">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Functional requirements</h6>
+    <div class="table-responsive">
+      <table class="table table-sm small align-middle">
+        <thead><tr><th style="width:5rem">ID</th><th>Requirement</th><th style="width:6rem">Priority</th></tr></thead>
+        <tbody>
+          {% for r in output.functional_requirements %}
+            <tr><td class="text-muted">{{ r.id }}</td><td>{{ r.description }}</td>
+                <td><span class="badge {{ priority[r.priority] }}">{{ r.priority|capitalize }}</span></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if output.non_functional_requirements %}
+      <h6 class="fw-bold mb-3 mt-2">Non-functional requirements</h6>
+      <div class="table-responsive">
+        <table class="table table-sm small align-middle mb-0">
+          <thead><tr><th style="width:5rem">ID</th><th style="width:9rem">Category</th><th>Requirement</th></tr></thead>
+          <tbody>
+            {% for r in output.non_functional_requirements %}
+              <tr><td class="text-muted">{{ r.id }}</td><td>{{ r.category }}</td><td>{{ r.description }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3" id="stories">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">User stories and acceptance criteria</h6>
+    <div class="list-group list-group-flush">
+      {% for s in output.user_stories %}
+        <div class="list-group-item px-0">
+          <div class="small"><span class="text-muted me-1">{{ s.id }}</span>
+            As a <span class="fw-semibold">{{ s.role }}</span>, I want {{ s.goal }}, so that {{ s.benefit }}.</div>
+          <ul class="small text-muted ps-3 mt-1 mb-0">{% for c in s.acceptance_criteria %}<li>{{ c }}</li>{% endfor %}</ul>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3" id="risks">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Risks</h6>
+    <div class="table-responsive">
+      <table class="table table-sm small align-middle mb-0">
+        <thead><tr><th>Risk</th><th style="width:6.5rem">Likelihood</th><th style="width:5.5rem">Impact</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          {% for r in output.risks %}
+            <tr><td>{{ r.description }}</td>
+                <td><span class="badge {{ level[r.likelihood] }}">{{ r.likelihood|capitalize }}</span></td>
+                <td><span class="badge {{ level[r.impact] }}">{{ r.impact|capitalize }}</span></td>
+                <td class="text-muted">{{ r.mitigation }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3" id="questions">
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">Questions for you</h6>
+        <ol class="small ps-3 mb-0">{% for q in output.clarification_questions %}<li class="mb-1">{{ q }}</li>{% else %}<li class="text-muted">None.</li>{% endfor %}</ol>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2">Assumptions made</h6>
+        <ul class="small ps-3 mb-0">{% for q in output.assumptions %}<li class="mb-1">{{ q }}</li>{% else %}<li class="text-muted">None.</li>{% endfor %}</ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm" id="next">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Recommended next steps</h6>
+    <ol class="list-group list-group-numbered list-group-flush small">
+      {% for s in output.recommended_next_steps %}
+        <li class="list-group-item px-0 d-flex justify-content-between align-items-start gap-3">
+          <div class="ms-2 me-auto">
+            <div class="fw-semibold">{{ s.step }}</div>
+            <div class="text-muted">{{ s.rationale }}</div>
+          </div>
+          <span class="badge {{ owners[s.owner][1] }} flex-shrink-0">{{ owners[s.owner][0] }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>

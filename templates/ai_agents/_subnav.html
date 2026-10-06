@@ -1,0 +1,22 @@
+{# STEP's global CSS reset removes list markers; restore them for AI result lists #}
+<style>
+  ul.ps-3 { list-style: disc; }
+  ol.ps-3 { list-style: decimal; }
+</style>
+{# Shared header for the AI Agents area #}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-4">
+  <div>
+    <h4 class="mb-1">{{ heading }}</h4>
+    {% if subheading %}<p class="text-muted mb-0">{{ subheading }}</p>{% endif %}
+  </div>
+  <ul class="nav nav-pills small">
+    <li class="nav-item">
+      <a class="nav-link py-1 {% if request.endpoint in ('ai_agents.catalogue', 'ai_agents.workspace') %}active{% endif %}"
+         href="{{ url_for('ai_agents.catalogue') }}"><i class="bi bi-grid me-1"></i>Agents</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link py-1 {% if request.endpoint in ('ai_agents.history', 'ai_agents.run_detail', 'ai_agents.edit_report') %}active{% endif %}"
+         href="{{ url_for('ai_agents.history') }}"><i class="bi bi-clock-history me-1"></i>History</a>
+    </li>
+  </ul>
+</div>
