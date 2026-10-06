@@ -79,7 +79,7 @@ def test_oversized_file_is_rejected(app, company_client):
 def test_too_many_files_rejected(app, company_client):
     files = [(io.BytesIO(b"content"), f"f{i}.txt") for i in range(6)]
     resp = _post(company_client, files)
-    assert resp.status_code == 400 and "at most 5 documents" in resp.get_data(as_text=True)
+    assert resp.status_code == 400 and "Attach at most 5 files." in resp.get_data(as_text=True)
 
 
 def test_long_documents_are_truncated_and_flagged(app, company_client):

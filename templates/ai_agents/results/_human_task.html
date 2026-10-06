@@ -1,0 +1,22 @@
+{# AI -> human handoff card shared by agents; expects `a` (HumanTaskAssessment), `run`, `draft`, `created_task` #}
+<div class="card shadow-sm mb-3 {{ 'border-success' if a.recommended else '' }}">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+      <h6 class="fw-bold mb-0">
+        {% if a.recommended %}<i class="bi bi-person-check me-2 text-success"></i>Recommended next step: a STEP student task
+        {% else %}<i class="bi bi-person-dash me-2 text-muted"></i>No student task recommended yet{% endif %}
+      </h6>
+      {% if a.recommended and draft and not created_task %}
+        <a href="{{ url_for('add_task', from_run=run.id) }}" class="btn btn-sm btn-primary flex-shrink-0">Create STEP task</a>
+      {% endif %}
+    </div>
+    <p class="small text-muted mb-3">{{ a.rationale }}</p>
+    {% if a.recommended and a.suggested_task %}
+      <div class="border rounded p-3 bg-light">
+        {% with task = a.suggested_task %}{% include "ai_agents/results/_task_draft.html" %}{% endwith %}
+      </div>
+      <p class="small text-muted mt-2 mb-0">Creating the task opens the normal STEP task form pre-filled with this draft. You can edit everything before it is posted.</p>
+    {% endif %}
+  </div>
+</div>
+

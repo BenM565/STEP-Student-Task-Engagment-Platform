@@ -893,6 +893,7 @@ def select_candidate(application_id):
 from ai_agents import draft_to_task_form, init_ai_agents
 from ai_agents.models import AgentRun
 from ai_agents.registry import get_agent
+from ai_agents.schema import ensure_schema as ai_ensure_schema
 from ai_agents.service import parsed_output as ai_parsed_output, sync_agent_records
 
 init_ai_agents(app, task_model=Task)
@@ -901,6 +902,8 @@ init_ai_agents(app, task_model=Task)
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        # Adds AI columns introduced after the AI tables were first created
+        ai_ensure_schema()
         sync_agent_records()
     app.run(debug=True)
 

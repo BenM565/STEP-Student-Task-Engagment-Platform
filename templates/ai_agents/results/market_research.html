@@ -1,0 +1,131 @@
+{# Structured view of MarketResearchOutput; expects `output`, `run`, `draft`, `created_task`, `artifacts` #}
+{% set sources = artifacts.get('sources') or [] %}
+{% set source_map = {} %}
+{% for s in sources %}{% set _ = source_map.update({s.id: s}) %}{% endfor %}
+
+{% macro refs(ids) -%}
+  {%- for sid in ids if sid in source_map -%}
+    <a href="#src-{{ sid }}" class="badge text-bg-light border text-decoration-none ms-1" title="{{ source_map[sid].title }}">{{ sid }}</a>
+  {%- endfor -%}
+{%- endmacro %}
+
+{% macro point_list(items) %}
+  <ul class="small ps-3 mb-0">
+    {% for p in items %}
+      {% set valid = p.source_ids|select('in', source_map)|list %}
+      <li class="mb-2">
+        {{ p.point }}
+        {% if p.basis == 'sourced' and valid %}{{ refs(valid) }}
+        {% else %}<span class="badge text-bg-secondary ms-1" title="The AI's own inference, not stated by a retrieved source">AI analysis</span>{% endif %}
+      </li>
+    {% else %}
+      <li class="text-muted">Nothing found.</li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">Executive summary</h6>
+    <p class="mb-2">{{ output.executive_summary }}</p>
+    <p class="small text-muted mb-0">
+      <i class="bi bi-globe2 me-1"></i>Based on {{ sources|length }} web source{{ 's' if sources|length != 1 }} retrieved during this run.
+      Points marked <span class="badge text-bg-secondary">AI analysis</span> are inference, not sourced facts.
+    </p>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-3">Market overview</h6>
+      {{ point_list(output.market_overview) }}
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-3">Size and trends</h6>
+      {{ point_list(output.size_and_trends) }}
+    </div></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Competitors</h6>
+    <div class="row g-3">
+      {% for c in output.competitors %}
+        <div class="col-md-6">
+          <div class="border rounded p-3 h-100 small">
+            <div class="fw-semibold">{{ c.name }}{{ refs(c.source_ids) }}</div>
+            <p class="mb-1">{{ c.description }}</p>
+            <p class="text-muted mb-2"><span class="fw-semibold">Positioning:</span> {{ c.positioning }}</p>
+            <div class="row g-2">
+              <div class="col-6"><div class="fw-semibold mb-1">Strengths</div><ul class="ps-3 mb-0">{% for x in c.strengths %}<li>{{ x }}</li>{% endfor %}</ul></div>
+              <div class="col-6"><div class="fw-semibold mb-1">Weaknesses</div><ul class="ps-3 mb-0">{% for x in c.weaknesses %}<li>{{ x }}</li>{% endfor %}</ul></div>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="col-12 small text-muted">No competitors identified in the sources.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Customer segments</h6>
+    <div class="row g-3">
+      {% for seg in output.customer_segments %}
+        <div class="col-md-6 small">
+          <div class="fw-semibold">{{ seg.name }}{{ refs(seg.source_ids) }}</div>
+          <div class="mb-1">{{ seg.description }}</div>
+          <ul class="text-muted ps-3 mb-0">{% for n in seg.needs %}<li>{{ n }}</li>{% endfor %}</ul>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-3">Opportunities</h6>
+      {{ point_list(output.opportunities) }}
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-3">Risks</h6>
+      {{ point_list(output.risks) }}
+    </div></div>
+  </div>
+</div>
+
+{% if output.evidence_gaps %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-2">What the research could not confirm</h6>
+      <ul class="small ps-3 mb-0">{% for g in output.evidence_gaps %}<li class="mb-1">{{ g }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+{% endif %}
+
+{% with a = output.human_task_assessment %}{% include "ai_agents/results/_human_task.html" %}{% endwith %}
+{% with steps = output.recommended_next_steps %}{% include "ai_agents/results/_next_steps.html" %}{% endwith %}
+
+<div class="card shadow-sm mb-3" id="sources">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Sources</h6>
+    <ol class="small ps-3 mb-0" style="list-style: none; padding-left: 0 !important;">
+      {% for s in sources %}
+        <li id="src-{{ s.id }}" class="mb-1">
+          <span class="badge text-bg-light border me-1">{{ s.id }}</span>
+          <a href="{{ s.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ s.title }}</a>
+          {% if s.page_age %}<span class="text-muted">· {{ s.page_age }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>

@@ -1,12 +1,12 @@
 # Business Analyst Agent: turns a business problem into structured requirements
 # and decides whether part of the work should become a STEP student task.
 
-from typing import List, Literal, Optional
+from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..registry import BaseAgent, InputField, register_agent
-from ..task_bridge import StepTaskDraft
+from ..task_bridge import HUMAN_TASK_GUIDANCE, HumanTaskAssessment, NextStep
 
 
 class BusinessAnalystInput(BaseModel):
@@ -53,22 +53,6 @@ class Risk(BaseModel):
     mitigation: str
 
 
-class NextStep(BaseModel):
-    step: str
-    owner: Literal["company", "ai_agent", "student"] = Field(
-        description="company = needs the company's decision or access; ai_agent = further analysis an AI agent can do; student = hands-on work suited to a STEP student"
-    )
-    rationale: str
-
-
-class HumanTaskAssessment(BaseModel):
-    recommended: bool = Field(description="True if part of the remaining work should be handed to a STEP student")
-    rationale: str = Field(description="Why a student is or is not the right next step, referencing the specific work")
-    suggested_task: Optional[StepTaskDraft] = Field(
-        description="A ready-to-post STEP task when recommended is true, otherwise null"
-    )
-
-
 class BusinessAnalysisOutput(BaseModel):
     summary: str = Field(description="3-5 sentence executive summary of the analysis and the recommended path")
     problem_definition: ProblemDefinition
@@ -82,7 +66,7 @@ class BusinessAnalysisOutput(BaseModel):
     human_task_assessment: HumanTaskAssessment
 
 
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT = f"""
 You are the Business Analyst Agent on STEP. A company describes a business problem; you produce the requirements analysis a capable business analyst would hand to a delivery team.
 
 What good output looks like:
@@ -93,10 +77,7 @@ What good output looks like:
 - Risks are specific to this situation, with a practical mitigation.
 - Clarification questions target the gaps that would most change the requirements.
 
-Deciding on a STEP student task:
-STEP students are university students working remotely for a bounded number of hours. Recommend a student task when there is concrete hands-on work left after your analysis that a student can do well, such as user research and interviews, UX design and prototyping, building a well-scoped feature or prototype, data collection or cleaning, testing, competitor research or content production.
-Do not recommend one when the next step is mainly a company decision, needs privileged access to production systems or sensitive personal data without supervision, or is too large or open-ended to scope (in that case recommend a smaller first phase a student could do).
-When you recommend a task, scope it for one student: concrete deliverables, milestones, acceptance criteria the company can check, and an honest hour estimate. Put anything the company must clarify first in questions_for_company.
+{HUMAN_TASK_GUIDANCE}
 """.strip()
 
 
@@ -157,6 +138,13 @@ class BusinessAnalystAgent(BaseAgent):
     )
     run_button_label = "Run analysis"
 
+    sample_input = {
+        "problem": "Around 40% of new customers abandon our web sign-up before verifying their email address. "
+                   "We think the process is too long but we do not know which step causes the drop-off.",
+        "context": "B2C subscription app, roughly 2,000 sign-ups a month, email verification required before first use.",
+        "constraints": "Small in-house team; must stay GDPR compliant.",
+    }
+
     input_model = BusinessAnalystInput
     output_model = BusinessAnalysisOutput
     system_prompt = SYSTEM_PROMPT
@@ -185,7 +173,7 @@ class BusinessAnalystAgent(BaseAgent):
         assessment = output.human_task_assessment
         return assessment.suggested_task if assessment.recommended else None
 
-    def to_markdown(self, o: BusinessAnalysisOutput) -> str:
+    def to_markdown(self, o: BusinessAnalysisOutput, artifacts=None) -> str:
         pd = o.problem_definition
         lines = ["# Business analysis", "", "## Summary", o.summary, "",
                  "## Problem definition", pd.statement, "", f"**Business context:** {pd.business_context}", ""]

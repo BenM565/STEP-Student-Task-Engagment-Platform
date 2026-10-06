@@ -90,12 +90,14 @@ class AgentRun(db.Model):
     agent_slug = db.Column(db.String(64), nullable=False)
     agent_version = db.Column(db.String(20), nullable=False)
 
-    # pending -> running -> succeeded | failed
-    status = db.Column(db.String(20), nullable=False, default="pending", index=True)
+    # queued -> running -> succeeded | failed
+    status = db.Column(db.String(20), nullable=False, default="queued", index=True)
     title = db.Column(db.String(200))
 
     input_data = db.Column(db.JSON, nullable=False)
     output_data = db.Column(db.JSON)
+    # Deterministic data STEP computed for the run (data profile, charts, web sources, fact checks)
+    artifacts = db.Column(db.JSON)
     # Company-edited version of the report; the original AI output is never overwritten
     edited_report = db.Column(LongText)
 
@@ -106,6 +108,7 @@ class AgentRun(db.Model):
     model = db.Column(db.String(64))
     input_tokens = db.Column(db.Integer)
     output_tokens = db.Column(db.Integer)
+    web_search_requests = db.Column(db.Integer)
     cost_usd = db.Column(db.Numeric(10, 6))
     duration_ms = db.Column(db.Integer)
 
@@ -116,7 +119,10 @@ class AgentRun(db.Model):
     parent_run_id = db.Column(db.Integer, db.ForeignKey("ai_agent_runs.id", ondelete="SET NULL"))
 
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
+    started_at = db.Column(db.DateTime)
     completed_at = db.Column(db.DateTime)
+    # host:pid of the process that claimed the run from the queue
+    worker_id = db.Column(db.String(100))
 
     agent = db.relationship("AIAgent")
     files = db.relationship("AgentFile", secondary=run_files, lazy="selectin")

@@ -1,0 +1,118 @@
+{# Structured view of DocumentAnalysisOutput; expects `output`, `run`, `draft`, `created_task`, `artifacts` #}
+{% set severity = {'low': 'text-bg-light border', 'medium': 'text-bg-warning', 'high': 'text-bg-danger'} %}
+{% set answer_badge = {'answered': ('Answered', 'text-bg-success'), 'partially_answered': ('Partly answered', 'text-bg-warning'), 'not_found': ('Not in documents', 'text-bg-secondary')} %}
+{% set checks = artifacts.get('fact_checks') or [] %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">Overview</h6>
+    <p class="mb-0">{{ output.overview }}</p>
+  </div>
+</div>
+
+{% if output.answers %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-3">Answers to your questions</h6>
+      <div class="list-group list-group-flush">
+        {% for a in output.answers %}
+          <div class="list-group-item px-0">
+            <div class="d-flex justify-content-between gap-3 mb-1">
+              <div class="fw-semibold small">{{ a.question }}</div>
+              <span class="badge {{ answer_badge[a.status][1] }} flex-shrink-0 align-self-start">{{ answer_badge[a.status][0] }}</span>
+            </div>
+            <div class="small">{{ a.answer }}</div>
+            {% if a.sources %}<div class="small text-muted mt-1"><i class="bi bi-file-earmark me-1"></i>{{ a.sources|join('; ') }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if output.key_information %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-1">Key information</h6>
+      <p class="small text-muted mb-3">STEP checks whether each value appears word for word in your documents. Values marked "Check source" may be paraphrased or wrong.</p>
+      <div class="table-responsive">
+        <table class="table table-sm small align-middle mb-0">
+          <thead><tr><th>Item</th><th>Value</th><th>Source</th><th style="width:8rem">Check</th></tr></thead>
+          <tbody>
+            {% for f in output.key_information %}
+              <tr>
+                <td>{{ f.label }}</td>
+                <td class="fw-semibold">{{ f.value }}</td>
+                <td class="text-muted">{{ f.source }}</td>
+                <td>
+                  {% if checks[loop.index0] %}<span class="badge text-bg-success"><i class="bi bi-check2 me-1"></i>Found in text</span>
+                  {% else %}<span class="badge text-bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Check source</span>{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Risks</h6>
+        {% for r in output.risks %}
+          <div class="mb-3 small">
+            <span class="badge {{ severity[r.severity] }} me-1">{{ r.severity|capitalize }}</span>{{ r.description }}
+            <div class="text-muted mt-1">{{ r.recommendation }}</div>
+            <div class="text-muted"><i class="bi bi-file-earmark me-1"></i>{{ r.source }}</div>
+          </div>
+        {% else %}
+          <p class="small text-muted mb-0">No specific risks identified.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Inconsistencies</h6>
+        {% for i in output.inconsistencies %}
+          <div class="mb-3 small">
+            <div>{{ i.description }}</div>
+            <div class="text-muted mt-1">{{ i.suggested_resolution }}</div>
+            <div class="text-muted"><i class="bi bi-file-earmark me-1"></i>{{ i.sources|join('; ') }}</div>
+          </div>
+        {% else %}
+          <p class="small text-muted mb-0">No inconsistencies found.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Document summaries</h6>
+    {% for d in output.documents %}
+      <div class="{% if not loop.last %}border-bottom pb-3 mb-3{% endif %}">
+        <div class="fw-semibold small">{{ d.filename }} <span class="text-muted fw-normal">· {{ d.document_type }}</span></div>
+        <p class="small mb-1">{{ d.summary }}</p>
+        <ul class="small text-muted ps-3 mb-0">{% for p in d.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if output.gaps %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-2">What the documents don't cover</h6>
+      <ul class="small ps-3 mb-0">{% for g in output.gaps %}<li class="mb-1">{{ g }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+{% endif %}
+
+{% with a = output.human_task_assessment %}{% include "ai_agents/results/_human_task.html" %}{% endwith %}
+{% with steps = output.recommended_next_steps %}{% include "ai_agents/results/_next_steps.html" %}{% endwith %}

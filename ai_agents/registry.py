@@ -2,11 +2,12 @@
 # @register_agent. Adding an agent = one new module in ai_agents/agents/ plus a
 # result template; no changes to routes, service or database are needed.
 
-from dataclasses import dataclass
-from typing import ClassVar, Dict, FrozenSet, List, Optional, Tuple, Type
+from dataclasses import dataclass, field
+from typing import Any, ClassVar, Dict, FrozenSet, List, Mapping, Optional, Tuple, Type
 
 from pydantic import BaseModel
 
+from .providers.base import AIProvider, Usage
 from .task_bridge import StepTaskDraft
 
 # Applied to every agent. Uploaded documents and company text are untrusted data:
@@ -44,6 +45,31 @@ class DocumentContext:
     truncated: bool
 
 
+@dataclass
+class AgentContext:
+    # Everything an agent may use for one run. files are only those the company
+    # explicitly attached to this run; the agent has no other data access.
+    data: BaseModel
+    documents: List[DocumentContext]
+    files: List[Any]  # AgentFile rows, for agents that need the original file (e.g. datasets)
+    provider: AIProvider
+    config: Mapping[str, Any]
+    usage: Usage = field(default_factory=Usage)
+    model: Optional[str] = None
+
+    def record(self, result) -> None:
+        # Accumulate usage across the provider calls an agent makes
+        self.usage = self.usage + result.usage
+        self.model = result.model
+
+
+@dataclass
+class AgentResult:
+    output: BaseModel
+    # Deterministic data computed by STEP (not the model), stored on the run
+    artifacts: Optional[Dict[str, Any]] = None
+
+
 class BaseAgent:
     # Catalogue metadata
     slug: ClassVar[str]
@@ -69,7 +95,13 @@ class BaseAgent:
     # Files
     accepts_files: ClassVar[bool] = False
     allowed_extensions: ClassVar[FrozenSet[str]] = frozenset()
+    min_files: ClassVar[int] = 0
     max_files: ClassVar[int] = 5
+    files_label: ClassVar[str] = "Supporting documents"
+    files_help: ClassVar[str] = ""
+
+    # Capabilities the agent needs from the provider/config
+    requires_web_search: ClassVar[bool] = False
 
     # Execution
     max_output_tokens: ClassVar[int] = 16000
@@ -78,17 +110,36 @@ class BaseAgent:
     # Display
     result_template: ClassVar[str]
 
+    # Example input for `flask ai-agents live-check` (agents that need no files)
+    sample_input: ClassVar[Optional[Dict[str, Any]]] = None
+
     def full_system_prompt(self) -> str:
         return f"{self.system_prompt.strip()}\n\n{SHARED_GUARDRAILS}"
 
     def build_prompt(self, data: BaseModel, documents: List[DocumentContext]) -> str:
         raise NotImplementedError
 
+    def execute(self, ctx: AgentContext) -> AgentResult:
+        """The agent's workflow. Default: one schema-constrained call.
+
+        Override for multi-step workflows (research then structure, compute then interpret).
+        Record every provider result with ctx.record() so usage and cost are tracked.
+        """
+        result = ctx.provider.structured_output(
+            system=self.full_system_prompt(),
+            prompt=self.build_prompt(ctx.data, ctx.documents),
+            output_model=self.output_model,
+            max_tokens=self.max_output_tokens,
+            effort=self.effort,
+        )
+        ctx.record(result)
+        return AgentResult(output=result.output)
+
     def run_title(self, data: BaseModel) -> str:
         # Short label for history lists
         raise NotImplementedError
 
-    def to_markdown(self, output: BaseModel) -> str:
+    def to_markdown(self, output: BaseModel, artifacts: Optional[Dict[str, Any]] = None) -> str:
         raise NotImplementedError
 
     def task_draft(self, output: BaseModel) -> Optional[StepTaskDraft]:

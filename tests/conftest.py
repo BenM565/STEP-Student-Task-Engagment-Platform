@@ -13,7 +13,7 @@ os.environ.pop("ANTHROPIC_API_KEY", None)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import app as step_app  # noqa: E402
-from ai_agents.providers import ProviderError, StructuredResult, Usage  # noqa: E402
+from ai_agents.providers import ProviderError, ResearchResult, Source, StructuredResult, Usage  # noqa: E402
 
 CSRF = "test-csrf-token"
 
@@ -64,25 +64,108 @@ def sample_ba_output(recommended=True):
     }
 
 
+def sample_assessment(recommended=False):
+    return {"recommended": recommended, "rationale": "Analysis only.",
+            "suggested_task": sample_task_draft() if recommended else None}
+
+
+def sample_next_steps():
+    return [{"step": "Review with the team", "owner": "company", "rationale": "Needs a decision"}]
+
+
+def sample_document_output():
+    return {
+        "overview": "A supplier contract and its pricing schedule.",
+        "documents": [{"filename": "contract.txt", "document_type": "Supplier contract", "summary": "Two-year supply deal.",
+                       "key_points": ["Auto-renews"]}],
+        "key_information": [
+            {"label": "Notice period", "value": "90 days", "source": "contract.txt"},
+            {"label": "Monthly fee", "value": "EUR 4,500", "source": "contract.txt"},
+        ],
+        "risks": [{"description": "Auto-renewal", "severity": "high", "source": "contract.txt", "recommendation": "Diary the notice date"}],
+        "inconsistencies": [],
+        "answers": [{"question": "When can we terminate?", "status": "answered", "answer": "With 90 days notice.", "sources": ["contract.txt"]}],
+        "gaps": ["No data-processing terms"],
+        "recommended_next_steps": sample_next_steps(),
+        "human_task_assessment": sample_assessment(),
+    }
+
+
+def sample_market_output():
+    return {
+        "executive_summary": "A growing niche in Cork.",
+        "market_overview": [{"point": "Refill shops are expanding", "basis": "sourced", "source_ids": ["S1"]}],
+        "size_and_trends": [{"point": "Market grew 12% in 2025", "basis": "sourced", "source_ids": ["S2", "S99"]},
+                            {"point": "Likely to keep growing", "basis": "analysis", "source_ids": []}],
+        "competitors": [{"name": "Refill Co", "description": "Cork refill shop", "positioning": "Premium",
+                         "strengths": ["Location"], "weaknesses": ["Price"], "source_ids": ["S1"]}],
+        "customer_segments": [{"name": "Eco households", "description": "Families", "needs": ["Convenience"], "source_ids": []}],
+        "opportunities": [{"point": "Office deliveries", "basis": "analysis", "source_ids": []}],
+        "risks": [{"point": "Rents rising", "basis": "sourced", "source_ids": ["S2"]}],
+        "evidence_gaps": ["No local market size figure"],
+        "recommended_next_steps": sample_next_steps(),
+        "human_task_assessment": sample_assessment(recommended=True),
+    }
+
+
+def sample_data_output():
+    return {
+        "dataset_summary": "Orders by region.",
+        "plain_english_summary": "Cork sells the most.",
+        "answer_to_question": None,
+        "key_findings": [
+            {"title": "Cork leads", "detail": "Cork has the most revenue.", "evidence": "Cork revenue sum 300", "importance": "high"},
+            {"title": "Growth", "detail": "Revenue grew.", "evidence": "Revenue grew 37.5%", "importance": "medium"},
+        ],
+        "trends": [], "anomalies": [], "data_quality_issues": [],
+        "suggested_visualisations": [
+            {"title": "Revenue by region", "chart_type": "bar", "x_column": "region", "y_column": "revenue", "aggregation": "sum", "rationale": "Compare regions"},
+            {"title": "Bad chart", "chart_type": "line", "x_column": "nonexistent", "y_column": None, "aggregation": "count", "rationale": "x"},
+        ],
+        "recommended_next_steps": sample_next_steps(),
+        "human_task_assessment": sample_assessment(),
+    }
+
+
+DEFAULT_OUTPUTS = {
+    "BusinessAnalysisOutput": sample_ba_output,
+    "DocumentAnalysisOutput": sample_document_output,
+    "MarketResearchOutput": sample_market_output,
+    "DataAnalysisOutput": sample_data_output,
+}
+
+
 class FakeProvider:
-    """Implements the AIProvider interface; returns canned structured output or raises."""
+    """Implements the AIProvider interface; returns canned output (per output model) or raises."""
 
     name = "fake"
 
     def __init__(self):
         self.calls = []
-        self.output = sample_ba_output()
+        self.output = None  # set to override the default output for every model
         self.error = None
+        self.research_error = None
+        self.research_sources = [Source(url="https://example.ie/refill-report", title="Refill report 2025", page_age="2025-06-01"),
+                                 Source(url="https://stats.example.ie/retail", title="Retail statistics")]
 
     def generate(self, **kwargs):  # pragma: no cover - not used by current agents
         raise NotImplementedError
 
+    def research(self, *, system, prompt, max_searches=8, max_tokens=16000, effort=None):
+        self.calls.append({"kind": "research", "system": system, "prompt": prompt, "max_searches": max_searches})
+        if self.research_error:
+            raise self.research_error
+        return ResearchResult(text="Notes: refill shops growing [S1].", sources=list(self.research_sources),
+                              model="claude-opus-5-5", provider=self.name,
+                              usage=Usage(input_tokens=2000, output_tokens=800, web_search_requests=3))
+
     def structured_output(self, *, system, prompt, output_model, max_tokens=16000, effort=None):
-        self.calls.append({"system": system, "prompt": prompt, "output_model": output_model,
+        self.calls.append({"kind": "structured", "system": system, "prompt": prompt, "output_model": output_model,
                            "max_tokens": max_tokens, "effort": effort})
         if self.error:
             raise self.error
-        return StructuredResult(output=output_model.model_validate(self.output), model="claude-opus-5-5",
+        data = self.output if self.output is not None else DEFAULT_OUTPUTS[output_model.__name__]()
+        return StructuredResult(output=output_model.model_validate(data), model="claude-opus-5-5",
                                 provider=self.name, usage=Usage(input_tokens=1000, output_tokens=500))
 
 
@@ -96,6 +179,8 @@ def app(tmp_path):
         TESTING=True,
         AI_UPLOAD_DIR=str(tmp_path / "uploads"),
         AI_PROVIDER_INSTANCE=provider,
+        AI_EXECUTION_MODE="inline",
+        AI_WEB_SEARCH_ENABLED=True,
         AI_MAX_RUNS_PER_DAY=50,
         ANTHROPIC_API_KEY=None,
     )

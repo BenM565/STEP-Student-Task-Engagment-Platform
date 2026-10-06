@@ -3,7 +3,7 @@
 
 import json
 
-from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user
 
 from extensions import db
@@ -53,8 +53,12 @@ def workspace(slug):
 
         try:
             data = service.validate_input(agent, values)
-            if len(uploads) + len(reused) > agent.max_files:
-                raise service.InputInvalid({"files": f"Attach at most {agent.max_files} documents."})
+            attached = len(uploads) + len(reused)
+            if attached > agent.max_files:
+                noun = "file" if agent.max_files == 1 else "files"
+                raise service.InputInvalid({"files": f"Attach at most {agent.max_files} {noun}."})
+            if attached < agent.min_files:
+                raise service.InputInvalid({"files": f"{agent.files_label}: attach at least {agent.min_files} file to run this agent."})
             service.check_run_limit(current_user.id)
             new_files = save_uploads(uploads, company_id=current_user.id, user_id=current_user.id,
                                      allowed_extensions=agent.allowed_extensions)
@@ -65,11 +69,9 @@ def workspace(slug):
         except service.RunLimitReached as exc:
             errors = {"__all__": f"Your company has reached its limit of {exc.args[0]} agent runs in 24 hours. Please try again later."}
         else:
-            run = service.execute_run(agent=agent, record=record, data=data, files=reused + new_files,
-                                      company_id=current_user.id, user_id=current_user.id,
-                                      parent_run_id=parent_run_id)
-            if run.status == "failed":
-                flash(run.error_message, "danger")
+            run = service.submit_run(agent=agent, record=record, data=data, files=reused + new_files,
+                                     company_id=current_user.id, user_id=current_user.id,
+                                     parent_run_id=parent_run_id)
             return redirect(url_for("ai_agents.run_detail", run_id=run.id))
 
     status = 400 if errors else 200
@@ -85,7 +87,9 @@ def history():
     saved_only = request.args.get("saved") == "1"
     if agent_filter:
         query = query.filter(AgentRun.agent_slug == agent_filter)
-    if status_filter in ("succeeded", "failed", "running"):
+    if status_filter == "in_progress":
+        query = query.filter(AgentRun.status.in_(("queued", "running")))
+    elif status_filter in ("succeeded", "failed"):
         query = query.filter(AgentRun.status == status_filter)
     if saved_only:
         query = query.filter(AgentRun.is_saved.is_(True))
@@ -101,7 +105,7 @@ def history():
 
 @bp.route("/runs/<int:run_id>")
 def run_detail(run_id):
-    run = service.company_run_or_404(run_id, current_user.id)
+    run = service.expire_if_stale(service.company_run_or_404(run_id, current_user.id))
     agent = get_agent(run.agent_slug)
     output = service.parsed_output(agent, run) if agent else None
     draft = agent.task_draft(output) if (agent and output) else None
@@ -111,7 +115,14 @@ def run_detail(run_id):
         created_task = Task.query.filter_by(id=run.created_task_id, company_id=current_user.id).first()
     can_rerun = agent is not None and _agent_available(agent.slug)
     return render_template("ai_agents/run_detail.html", run=run, agent=agent, output=output, draft=draft,
-                           created_task=created_task, can_rerun=can_rerun)
+                           created_task=created_task, can_rerun=can_rerun, artifacts=run.artifacts or {})
+
+
+@bp.route("/runs/<int:run_id>/status")
+def run_status(run_id):
+    # Polled by the result page while a run is queued or running
+    run = service.expire_if_stale(service.company_run_or_404(run_id, current_user.id))
+    return jsonify({"id": run.id, "status": run.status, "done": run.status in service.TERMINAL_STATUSES})
 
 
 @bp.route("/runs/<int:run_id>/save", methods=["POST"])
@@ -146,7 +157,7 @@ def edit_report(run_id):
         db.session.commit()
         return redirect(url_for("ai_agents.run_detail", run_id=run.id))
 
-    report = run.edited_report or agent.to_markdown(output)
+    report = run.edited_report or agent.to_markdown(output, artifacts=run.artifacts)
     return render_template("ai_agents/edit_report.html", run=run, agent=agent, report=report)
 
 
@@ -176,7 +187,7 @@ def export_run(run_id):
         if run.edited_report:
             body = run.edited_report
         elif output is not None:
-            body = agent.to_markdown(output)
+            body = agent.to_markdown(output, artifacts=run.artifacts)
         else:
             abort(404)
         mimetype, ext = "text/markdown; charset=utf-8", "md"

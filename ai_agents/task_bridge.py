@@ -2,7 +2,7 @@
 # the mapping onto the existing STEP task form (title / requirements / hours).
 # Any agent that can propose a student task returns a StepTaskDraft.
 
-from typing import List
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -28,6 +28,32 @@ class StepTaskDraft(BaseModel):
     estimated_hours: int = Field(description="Realistic total effort in hours for one university student")
     suggested_disciplines: List[str] = Field(description="Degree disciplines best suited, e.g. 'Business Information Systems'")
     questions_for_company: List[str] = Field(description="What the company must answer before a student can start")
+
+
+class NextStep(BaseModel):
+    step: str
+    owner: Literal["company", "ai_agent", "student"] = Field(
+        description="company = needs the company's decision or access; ai_agent = further analysis an AI agent can do; student = hands-on work suited to a STEP student"
+    )
+    rationale: str
+
+
+class HumanTaskAssessment(BaseModel):
+    # Shared by every agent that can hand remaining work to a STEP student
+    recommended: bool = Field(description="True if part of the remaining work should be handed to a STEP student")
+    rationale: str = Field(description="Why a student is or is not the right next step, referencing the specific work")
+    suggested_task: Optional[StepTaskDraft] = Field(
+        description="A ready-to-post STEP task when recommended is true, otherwise null"
+    )
+
+
+# Guidance reused in agent prompts so every agent makes the human-handoff call the same way
+HUMAN_TASK_GUIDANCE = """
+Deciding on a STEP student task:
+STEP students are university students working remotely for a bounded number of hours. Recommend a student task when concrete hands-on work remains after your analysis that a student can do well, such as user research and interviews, UX design and prototyping, building a well-scoped feature or prototype, data collection or cleaning, testing, primary market research, or content production.
+Do not recommend one when the next step is mainly a company decision, needs privileged access to production systems or sensitive personal data without supervision, or is too large or open-ended to scope (in that case recommend a smaller first phase a student could do).
+When you recommend a task, scope it for one student: concrete deliverables, milestones, acceptance criteria the company can check, and an honest hour estimate. Put anything the company must clarify first in questions_for_company.
+""".strip()
 
 
 def _bullets(items) -> str:

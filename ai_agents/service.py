@@ -3,6 +3,9 @@
 # the helpers here so company isolation is enforced in one place.
 
 import logging
+import os
+import socket
+import threading
 import time
 from datetime import timedelta
 from decimal import Decimal
@@ -10,12 +13,13 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from flask import abort, current_app
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import update
 
 from extensions import db
 
 from .models import AgentFile, AgentRun, AIAgent, AIAgentAccess, utcnow
-from .providers import ProviderError, get_provider
-from .registry import BaseAgent, DocumentContext, all_agents, get_agent
+from .providers import ProviderError, Usage, get_provider
+from .registry import AgentContext, BaseAgent, DocumentContext, all_agents, get_agent
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +74,9 @@ def sync_agent_records() -> Dict[str, AIAgent]:
 
 def is_available_to(record: AIAgent, company_id: int) -> bool:
     if record is None or record.status != "active":
+        return False
+    agent = get_agent(record.slug)
+    if agent is not None and agent.requires_web_search and not current_app.config.get("AI_WEB_SEARCH_ENABLED"):
         return False
     if record.access_scope == "all":
         return True
@@ -168,28 +175,40 @@ def build_documents(files: List[AgentFile]) -> List[DocumentContext]:
 
 
 # ---------------------------------------------------------------------------
-# Execution
+# Execution: runs are queued, then claimed and executed by one of
+#   inline - in the request (tests, debugging)
+#   thread - a background thread in the web process (default; no extra process)
+#   worker - a separate `flask ai-agents worker` process polling the queue (production)
+# Claiming is an atomic UPDATE, so a run is never executed twice even with
+# several web processes and workers.
 # ---------------------------------------------------------------------------
 
-def estimate_cost(model: Optional[str], input_tokens: int, output_tokens: int) -> Optional[Decimal]:
+TERMINAL_STATUSES = ("succeeded", "failed")
+
+
+def estimate_cost(model: Optional[str], usage: Usage) -> Optional[Decimal]:
     prices = current_app.config["AI_MODEL_PRICES"].get(model or "")
     if not prices:
         return None
     in_price, out_price = prices
-    cost = (Decimal(input_tokens) * Decimal(str(in_price)) + Decimal(output_tokens) * Decimal(str(out_price))) / Decimal(1_000_000)
+    cost = (Decimal(usage.input_tokens) * Decimal(str(in_price))
+            + Decimal(usage.output_tokens) * Decimal(str(out_price))) / Decimal(1_000_000)
+    if usage.web_search_requests:
+        per_1k = Decimal(str(current_app.config["AI_WEB_SEARCH_PRICE_PER_1K"]))
+        cost += Decimal(usage.web_search_requests) * per_1k / Decimal(1000)
     return cost.quantize(Decimal("0.000001"))
 
 
-def execute_run(*, agent: BaseAgent, record: AIAgent, data: BaseModel, files: List[AgentFile],
-                company_id: int, user_id: int, parent_run_id: Optional[int] = None) -> AgentRun:
-    """Run an agent synchronously and persist the outcome. Failures are stored, not raised."""
+def submit_run(*, agent: BaseAgent, record: AIAgent, data: BaseModel, files: List[AgentFile],
+               company_id: int, user_id: int, parent_run_id: Optional[int] = None) -> AgentRun:
+    """Queue a run and hand it to the configured executor. Returns immediately except in inline mode."""
     run = AgentRun(
         company_id=company_id,
         user_id=user_id,
         agent_id=record.id,
         agent_slug=agent.slug,
         agent_version=agent.version,
-        status="running",
+        status="queued",
         title=agent.run_title(data)[:200],
         input_data=data.model_dump(mode="json"),
         parent_run_id=parent_run_id,
@@ -197,46 +216,178 @@ def execute_run(*, agent: BaseAgent, record: AIAgent, data: BaseModel, files: Li
     run.files = list(files)
     db.session.add(run)
     db.session.commit()
+    dispatch(run.id)
+    return run
 
+
+def dispatch(run_id: int):
+    mode = current_app.config["AI_EXECUTION_MODE"]
+    if mode == "inline":
+        process_run(run_id, worker_id="inline")
+        db.session.expire_all()
+        return None
+    if mode == "thread":
+        app = current_app._get_current_object()
+        thread = threading.Thread(target=_run_in_thread, args=(app, run_id), name=f"ai-run-{run_id}", daemon=True)
+        thread.start()
+        return thread
+    # "worker": a `flask ai-agents worker` process picks it up from the queue
+    return None
+
+
+def _run_in_thread(app, run_id: int) -> None:
+    with app.app_context():
+        try:
+            process_run(run_id, worker_id=f"thread:{socket.gethostname()}:{os.getpid()}")
+        finally:
+            db.session.remove()
+
+
+def claim_run(run_id: int, worker_id: str) -> bool:
+    """Atomically move a run from queued to running. False if someone else claimed it."""
+    result = db.session.execute(
+        update(AgentRun)
+        .where(AgentRun.id == run_id, AgentRun.status == "queued")
+        .values(status="running", started_at=utcnow(), worker_id=worker_id[:100])
+    )
+    db.session.commit()
+    return result.rowcount == 1
+
+
+def claim_next(worker_id: str) -> Optional[int]:
+    """Claim the oldest queued run, retrying if another worker wins the race."""
+    for _ in range(5):
+        run_id = (db.session.query(AgentRun.id).filter(AgentRun.status == "queued")
+                  .order_by(AgentRun.created_at, AgentRun.id).limit(1).scalar())
+        if run_id is None:
+            return None
+        if claim_run(run_id, worker_id):
+            return run_id
+    return None
+
+
+def process_run(run_id: int, worker_id: str) -> bool:
+    """Claim and execute one run. Returns False if it was already claimed."""
+    if not claim_run(run_id, worker_id):
+        return False
+    execute_claimed_run(run_id)
+    return True
+
+
+def execute_claimed_run(run_id: int) -> None:
+    """Execute a run already in 'running' state and persist the outcome. Failures are stored, not raised."""
+    run = db.session.get(AgentRun, run_id)
+    agent = get_agent(run.agent_slug)
     started = time.monotonic()
+    ctx = None
     try:
+        if agent is None or not is_available_to(run.agent, run.company_id):
+            raise ProviderError("agent_unavailable", "This agent is no longer available to your company.")
+        data = agent.input_model.model_validate(run.input_data)
         provider = get_provider()
         run.provider = provider.name
-        prompt = agent.build_prompt(data, build_documents(files))
-        result = provider.structured_output(
-            system=agent.full_system_prompt(),
-            prompt=prompt,
-            output_model=agent.output_model,
-            max_tokens=agent.max_output_tokens,
-            effort=agent.effort,
-        )
+        ctx = AgentContext(data=data, documents=build_documents(list(run.files)), files=list(run.files),
+                           provider=provider, config=current_app.config)
+        result = agent.execute(ctx)
         run.output_data = result.output.model_dump(mode="json")
-        run.model = result.model
-        _record_usage(run, result.usage)
+        run.artifacts = result.artifacts
         run.status = "succeeded"
     except ProviderError as exc:
         log.warning("Agent run %s failed (%s): %s", run.id, exc.code, exc)
         run.status = "failed"
         run.error_code = exc.code
         run.error_message = exc.user_message
-        if exc.usage:
-            _record_usage(run, exc.usage)
+        if ctx is not None and exc.usage:
+            ctx.usage = ctx.usage + exc.usage
     except Exception:  # noqa: BLE001 - never leave a run stuck in "running"
         log.exception("Unexpected error in agent run %s", run.id)
+        db.session.rollback()
+        run = db.session.get(AgentRun, run_id)
         run.status = "failed"
         run.error_code = "internal_error"
-        run.error_message = "Something went wrong while running the agent. The STEP team has been notified in the server logs."
+        run.error_message = "Something went wrong while running the agent. The error has been logged for the STEP team."
     finally:
+        if ctx is not None:
+            _record_usage(run, ctx)
         run.duration_ms = int((time.monotonic() - started) * 1000)
         run.completed_at = utcnow()
         db.session.commit()
+
+
+def _record_usage(run: AgentRun, ctx: AgentContext) -> None:
+    usage = ctx.usage
+    run.model = ctx.model or run.model
+    if not (usage.input_tokens or usage.output_tokens or usage.web_search_requests):
+        return
+    run.input_tokens = usage.input_tokens
+    run.output_tokens = usage.output_tokens
+    run.web_search_requests = usage.web_search_requests or None
+    run.cost_usd = estimate_cost(run.model or current_app.config.get("AI_MODEL"), usage)
+
+
+# Messages for runs that never reached a terminal state
+_STALE_RUNNING = ("interrupted", "This run was interrupted before it finished (the server may have restarted). Please run it again.")
+_STALE_QUEUED = ("not_started", "This run was not started because no background worker picked it up. Please run it again, or ask the STEP administrator to check the AI worker.")
+
+
+def _stale_cutoffs():
+    now = utcnow()
+    return (now - timedelta(seconds=int(current_app.config["AI_STALE_RUN_SECONDS"])),
+            now - timedelta(seconds=int(current_app.config["AI_QUEUE_TIMEOUT_SECONDS"])))
+
+
+def expire_if_stale(run: AgentRun) -> AgentRun:
+    """Mark a single run failed if it has been running or queued for too long."""
+    running_cutoff, queued_cutoff = _stale_cutoffs()
+    if run.status == "running" and run.started_at and run.started_at < running_cutoff:
+        _fail(run, *_STALE_RUNNING)
+    elif run.status == "queued" and run.created_at < queued_cutoff:
+        _fail(run, *_STALE_QUEUED)
     return run
 
 
-def _record_usage(run: AgentRun, usage) -> None:
-    run.input_tokens = usage.input_tokens
-    run.output_tokens = usage.output_tokens
-    run.cost_usd = estimate_cost(run.model or current_app.config.get("AI_MODEL"), usage.input_tokens, usage.output_tokens)
+def reap_stale_runs() -> int:
+    running_cutoff, queued_cutoff = _stale_cutoffs()
+    stale = AgentRun.query.filter(
+        db.or_(
+            db.and_(AgentRun.status == "running", AgentRun.started_at < running_cutoff),
+            db.and_(AgentRun.status == "queued", AgentRun.created_at < queued_cutoff),
+        )
+    ).all()
+    for run in stale:
+        expire_if_stale(run)
+    return len(stale)
+
+
+def _fail(run: AgentRun, code: str, message: str) -> None:
+    # Conditional update so a run that finished meanwhile is left alone
+    result = db.session.execute(
+        update(AgentRun)
+        .where(AgentRun.id == run.id, AgentRun.status == run.status)
+        .values(status="failed", error_code=code, error_message=message, completed_at=utcnow())
+    )
+    db.session.commit()
+    if result.rowcount:
+        db.session.refresh(run)
+
+
+def run_worker(*, worker_id: str, once: bool = False, poll_interval: float = 2.0, should_stop=lambda: False) -> int:
+    """Worker loop for `flask ai-agents worker`. Returns the number of runs processed."""
+    processed = 0
+    while not should_stop():
+        reap_stale_runs()
+        run_id = claim_next(worker_id)
+        if run_id is not None:
+            log.info("Worker %s executing run %s", worker_id, run_id)
+            execute_claimed_run(run_id)
+            processed += 1
+            db.session.remove()
+            continue
+        db.session.remove()
+        if once:
+            break
+        time.sleep(poll_interval)
+    return processed
 
 
 def parsed_output(agent: BaseAgent, run: AgentRun) -> Optional[BaseModel]:

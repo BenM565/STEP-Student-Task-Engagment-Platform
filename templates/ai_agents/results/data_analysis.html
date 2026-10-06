@@ -1,0 +1,218 @@
+{# Structured view of DataAnalysisOutput; expects `output`, `run`, `draft`, `created_task`, `artifacts` #}
+{% set profile = artifacts.get('profile') or {} %}
+{% set charts = artifacts.get('charts') or [] %}
+{% set checks = artifacts.get('figure_checks') or {} %}
+{% set importance = {'high': 'text-bg-danger', 'medium': 'text-bg-warning', 'low': 'text-bg-light border'} %}
+
+{% macro check_badge(group, index) -%}
+  {%- set flags = checks.get(group) or [] -%}
+  {%- if flags|length > index -%}
+    {%- if flags[index] -%}<span class="badge text-bg-success ms-1" title="Every figure quoted appears in the data profile STEP computed"><i class="bi bi-check2 me-1"></i>Figures match data</span>
+    {%- else -%}<span class="badge text-bg-warning ms-1" title="Contains figures STEP could not find in the computed profile, such as derived percentages"><i class="bi bi-exclamation-triangle me-1"></i>Check figures</span>{%- endif -%}
+  {%- endif -%}
+{%- endmacro %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">Summary</h6>
+    <p class="mb-2">{{ output.plain_english_summary }}</p>
+    <p class="small text-muted mb-0">{{ output.dataset_summary }}</p>
+    {% if profile %}
+      <p class="small text-muted mb-0 mt-1">
+        {{ '{:,}'.format(profile.rows) }} rows × {{ profile.columns }} columns analysed{% if profile.rows_truncated %}, <span class="text-warning-emphasis">file was longer; only the first {{ '{:,}'.format(profile.rows) }} rows were analysed</span>{% endif %}{% if profile.columns_truncated %}, <span class="text-warning-emphasis">extra columns were ignored</span>{% endif %}.
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+{% if output.answer_to_question %}
+  <div class="card shadow-sm mb-3 border-primary-subtle">
+    <div class="card-body">
+      <h6 class="fw-bold mb-2">Answer to your question</h6>
+      <p class="mb-0">{{ output.answer_to_question }}</p>
+    </div>
+  </div>
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-1">Key findings</h6>
+    <p class="small text-muted mb-3">STEP computed the statistics; the AI explains them. Each finding shows whether its figures match the computed data.</p>
+    <div class="list-group list-group-flush">
+      {% for f in output.key_findings %}
+        <div class="list-group-item px-0">
+          <div class="d-flex justify-content-between gap-2 mb-1">
+            <div class="fw-semibold small">{{ f.title }}</div>
+            <div class="flex-shrink-0"><span class="badge {{ importance[f.importance] }}">{{ f.importance|capitalize }}</span>{{ check_badge('key_findings', loop.index0) }}</div>
+          </div>
+          <div class="small">{{ f.detail }}</div>
+          <div class="small text-muted mt-1"><i class="bi bi-calculator me-1"></i>{{ f.evidence }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if charts %}
+  <div class="row g-3 mb-3">
+    {% for c in charts %}
+      <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <h6 class="fw-bold mb-1">{{ c.title }}</h6>
+            <p class="small text-muted mb-2">{{ c.rationale }}</p>
+            {% if c.ok %}
+              <div style="position: relative; height: 260px;">
+                <canvas id="chart-{{ loop.index0 }}" role="img"
+                        aria-label="{{ c.chart_type }} chart: {{ c.title }}"></canvas>
+              </div>
+              {% if c.note %}<div class="small text-muted mt-1">{{ c.note }}</div>{% endif %}
+              <details class="small mt-2">
+                <summary class="text-muted">View data</summary>
+                <div class="table-responsive mt-2" style="max-height: 14rem;">
+                  <table class="table table-sm mb-0">
+                    {% if c.chart_type == 'scatter' %}
+                      <thead><tr><th>{{ c.x_column }}</th><th>{{ c.y_column }}</th></tr></thead>
+                      <tbody>{% for p in c.points %}<tr><td>{{ p.x }}</td><td>{{ p.y }}</td></tr>{% endfor %}</tbody>
+                    {% else %}
+                      <thead><tr><th>{{ c.x_column }}{% if c.granularity %} ({{ c.granularity }}){% endif %}</th>
+                        <th>{% if c.chart_type == 'histogram' or c.aggregation == 'count' %}Rows{% else %}{{ c.aggregation|capitalize }} of {{ c.y_column }}{% endif %}</th></tr></thead>
+                      <tbody>{% for label in c.labels %}<tr><td>{{ label }}</td><td>{{ c['values'][loop.index0] }}</td></tr>{% endfor %}</tbody>
+                    {% endif %}
+                  </table>
+                </div>
+              </details>
+            {% else %}
+              <div class="small text-muted border rounded p-3"><i class="bi bi-slash-circle me-1"></i>Not drawn: {{ c.error }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-3">Trends</h6>
+      {% for t in output.trends %}
+        <div class="small mb-3">
+          <div>{{ t.description }}{{ check_badge('trends', loop.index0) }}</div>
+          <div class="text-muted mt-1"><i class="bi bi-calculator me-1"></i>{{ t.evidence }}</div>
+        </div>
+      {% else %}<p class="small text-muted mb-0">No clear trends.</p>{% endfor %}
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-3">Anomalies</h6>
+      {% for a in output.anomalies %}
+        <div class="small mb-3">
+          <div><span class="fw-semibold">{{ a.column }}:</span> {{ a.description }}{{ check_badge('anomalies', loop.index0) }}</div>
+          <div class="text-muted mt-1"><i class="bi bi-calculator me-1"></i>{{ a.evidence }}</div>
+          {% if a.possible_explanations %}<ul class="text-muted ps-3 mb-0 mt-1">{% for x in a.possible_explanations %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+      {% else %}<p class="small text-muted mb-0">No anomalies found.</p>{% endfor %}
+    </div></div>
+  </div>
+</div>
+
+{% if output.data_quality_issues %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-3">Data quality</h6>
+      <div class="table-responsive">
+        <table class="table table-sm small mb-0">
+          <thead><tr><th>Column</th><th>Issue</th><th>Impact on conclusions</th></tr></thead>
+          <tbody>{% for d in output.data_quality_issues %}<tr><td class="fw-semibold">{{ d.column }}</td><td>{{ d.issue }}</td><td class="text-muted">{{ d.impact }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% with a = output.human_task_assessment %}{% include "ai_agents/results/_human_task.html" %}{% endwith %}
+{% with steps = output.recommended_next_steps %}{% include "ai_agents/results/_next_steps.html" %}{% endwith %}
+
+{% if profile %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <a class="small fw-semibold text-decoration-none" data-bs-toggle="collapse" href="#dataProfile" role="button" aria-expanded="false">
+        <i class="bi bi-chevron-down me-1"></i>Data profile computed by STEP
+      </a>
+      <div class="collapse mt-3" id="dataProfile">
+        <div class="table-responsive">
+          <table class="table table-sm small align-middle mb-0">
+            <thead><tr><th>Column</th><th>Type</th><th class="text-end">Missing</th><th>Summary</th></tr></thead>
+            <tbody>
+              {% for c in profile.column_profiles %}
+                <tr>
+                  <td class="fw-semibold">{{ c.name }}</td>
+                  <td>{{ c.type }}{% if c.likely_identifier %} <span class="text-muted">(ID)</span>{% endif %}</td>
+                  <td class="text-end">{{ c.missing }} ({{ c.missing_pct }}%)</td>
+                  <td class="text-muted">
+                    {% if c.stats %}min {{ c.stats.min }} · median {{ c.stats.median }} · mean {{ c.stats.mean }} · max {{ c.stats.max }} · {{ c.stats.outliers_iqr.count }} outlier{{ 's' if c.stats.outliers_iqr.count != 1 }}
+                    {% elif c.range %}{{ c.range.min }} to {{ c.range.max }}
+                    {% elif c.top %}{{ c.distinct }} distinct; top: {% for t in c.top[:3] %}{{ t.value }} ({{ t.pct }}%){{ ', ' if not loop.last }}{% endfor %}
+                    {% elif c.distinct is defined %}{{ c.distinct }} distinct values{% endif %}
+                    {% if c.note %}<span class="text-warning-emphasis"> · {{ c.note }}</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if profile.duplicate_rows %}<p class="small text-muted mt-2 mb-0">{{ profile.duplicate_rows }} exact duplicate rows.</p>{% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if charts|selectattr('ok')|list %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      if (!window.Chart) return;  // CDN unavailable: the data tables remain
+      const charts = {{ charts|tojson }};
+      // One series per chart: a single validated hue, recessive grid, no legend
+      const color = '#0d6efd';
+      const ink = '#6c757d';
+      const grid = 'rgba(0, 0, 0, 0.06)';
+      Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+      Chart.defaults.color = ink;
+      const fmt = new Intl.NumberFormat(undefined, {maximumFractionDigits: 2});
+
+      charts.forEach(function (c, i) {
+        if (!c.ok) return;
+        const el = document.getElementById('chart-' + i);
+        if (!el) return;
+        const yLabel = (c.chart_type === 'histogram' || c.aggregation === 'count') ? 'Rows' : (c.aggregation + ' of ' + c.y_column);
+        let config;
+        if (c.chart_type === 'scatter') {
+          config = {type: 'scatter', data: {datasets: [{data: c.points, backgroundColor: color + 'b3', pointRadius: 4, pointHoverRadius: 6}]},
+                    options: {scales: {x: {title: {display: true, text: c.x_column}}, y: {title: {display: true, text: c.y_column}}}}};
+        } else if (c.chart_type === 'line') {
+          config = {type: 'line', data: {labels: c.labels, datasets: [{data: c.values, borderColor: color, backgroundColor: color,
+                    borderWidth: 2, pointRadius: c.labels.length > 24 ? 0 : 4, pointHoverRadius: 6, tension: 0}]},
+                    options: {interaction: {mode: 'index', intersect: false}, scales: {y: {title: {display: true, text: yLabel}}}}};
+        } else {
+          config = {type: 'bar', data: {labels: c.labels, datasets: [{data: c.values, backgroundColor: color,
+                    borderRadius: 4, borderSkipped: 'start', categoryPercentage: 0.8, barPercentage: 0.9}]},
+                    options: {scales: {y: {beginAtZero: true, title: {display: true, text: yLabel}}}}};
+        }
+        config.options.responsive = true;
+        config.options.maintainAspectRatio = false;
+        config.options.plugins = {legend: {display: false}, tooltip: {callbacks: {label: function (ctx) {
+          const v = ctx.parsed.y;
+          return c.chart_type === 'scatter' ? (c.x_column + ': ' + fmt.format(ctx.parsed.x) + ', ' + c.y_column + ': ' + fmt.format(v)) : (yLabel + ': ' + fmt.format(v));
+        }}}};
+        ['x', 'y'].forEach(function (axis) {
+          config.options.scales[axis] = Object.assign({grid: {color: grid}, border: {display: false}}, config.options.scales[axis] || {});
+        });
+        config.options.scales.x.grid = {display: false};
+        new Chart(el, config);
+      });
+    })();
+  </script>
+{% endif %}

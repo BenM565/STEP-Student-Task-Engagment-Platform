@@ -9,6 +9,8 @@ from .base import (
     AIProvider,
     ProviderError,
     ProviderNotConfiguredError,
+    ResearchResult,
+    Source,
     StructuredResult,
     TextResult,
     Usage,
@@ -19,6 +21,12 @@ log = logging.getLogger(__name__)
 # Server-side refusal fallback: if the primary model declines a request, the API
 # re-runs it on a fallback model chosen by refusal category, inside the same call.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+# Server-side web search (runs on Anthropic's infrastructure; billed per search)
+WEB_SEARCH_TOOL = "web_search_20260209"
+# The server-side tool loop pauses after a set number of iterations; resume at most this often
+MAX_PAUSE_CONTINUATIONS = 3
+MAX_SOURCES = 40
 
 
 class AnthropicProvider(AIProvider):
@@ -61,6 +69,40 @@ class AnthropicProvider(AIProvider):
         self._check_stop_reason(response, usage)
         text = "".join(b.text for b in response.content if b.type == "text")
         return TextResult(text=text, model=response.model, provider=self.name, usage=usage)
+
+    def research(self, *, system, prompt, max_searches=8, max_tokens=16000, effort=None) -> ResearchResult:
+        kwargs = self._common(system, prompt, max_tokens, effort)
+        messages = kwargs.pop("messages")
+        kwargs["tools"] = [{"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": max_searches}]
+
+        usage = Usage()
+        sources = {}
+        texts = []
+        model = self.model
+        for _ in range(MAX_PAUSE_CONTINUATIONS + 1):
+            try:
+                response = self._call(self._client.beta.messages.create, messages=messages, **kwargs)
+            except ProviderError as exc:
+                exc.usage = usage
+                if exc.code == "provider_bad_request":
+                    exc.user_message = ("The AI service rejected the web research request. If this keeps happening, "
+                                        "check that web search is enabled for STEP's Anthropic account.")
+                raise
+            usage = usage + _usage(response)
+            model = response.model
+            _collect_sources(response.content, sources)
+            texts.extend(b.text for b in response.content if b.type == "text")
+            if response.stop_reason != "pause_turn":
+                self._check_stop_reason(response, usage)
+                break
+            # Resume the paused server-side loop: send the turn back unchanged, no extra user message
+            messages = messages + [{"role": "assistant", "content": response.content}]
+        else:
+            raise ProviderError("research_incomplete", "The web research did not finish. Please run the agent again.",
+                                detail="pause_turn limit reached", retryable=True, usage=usage)
+
+        return ResearchResult(text="".join(texts).strip(), sources=list(sources.values())[:MAX_SOURCES],
+                              model=model, provider=self.name, usage=usage)
 
     def structured_output(self, *, system, prompt, output_model, max_tokens=16000, effort=None) -> StructuredResult:
         response = self._call(
@@ -136,4 +178,22 @@ def _usage(response) -> Usage:
     if u is None:
         return Usage()
     cached = (getattr(u, "cache_read_input_tokens", 0) or 0) + (getattr(u, "cache_creation_input_tokens", 0) or 0)
-    return Usage(input_tokens=(u.input_tokens or 0) + cached, output_tokens=u.output_tokens or 0)
+    server = getattr(u, "server_tool_use", None)
+    searches = (getattr(server, "web_search_requests", 0) or 0) if server else 0
+    return Usage(input_tokens=(u.input_tokens or 0) + cached, output_tokens=u.output_tokens or 0,
+                 web_search_requests=searches)
+
+
+def _collect_sources(content, sources: dict) -> None:
+    # Pages come back in web_search_tool_result blocks and as citations on text blocks.
+    # Search errors arrive as an error object instead of a list and are skipped.
+    for block in content:
+        if block.type == "web_search_tool_result" and isinstance(block.content, list):
+            for result in block.content:
+                if getattr(result, "type", None) == "web_search_result" and result.url:
+                    sources.setdefault(result.url, Source(url=result.url, title=result.title or "",
+                                                          page_age=getattr(result, "page_age", None)))
+        elif block.type == "text":
+            for citation in getattr(block, "citations", None) or []:
+                if getattr(citation, "type", None) == "web_search_result_location" and citation.url:
+                    sources.setdefault(citation.url, Source(url=citation.url, title=citation.title or ""))

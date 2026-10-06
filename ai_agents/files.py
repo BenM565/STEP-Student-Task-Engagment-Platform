@@ -19,7 +19,7 @@ from extensions import db
 from .models import AgentFile
 
 TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
-SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | {".pdf", ".docx"}
+SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | {".pdf", ".docx", ".xlsx"}
 
 CONTENT_TYPES = {
     ".txt": "text/plain",
@@ -27,10 +27,13 @@ CONTENT_TYPES = {
     ".csv": "text/csv",
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
-# Zip-bomb guard for .docx
-MAX_DOCX_UNCOMPRESSED = 50 * 1024 * 1024
+# Zip-bomb guard for .docx / .xlsx
+MAX_ZIP_UNCOMPRESSED = 100 * 1024 * 1024
+# Text preview of a spreadsheet kept for history/search; analysis re-reads the file
+XLSX_PREVIEW_ROWS = 2000
 MAX_PDF_PAGES = 300
 
 
@@ -112,6 +115,8 @@ def extract_text(data: bytes, ext: str, label: str, max_chars: int) -> Extracted
         text = _pdf_text(data, label)
     elif ext == ".docx":
         text = _docx_text(data, label)
+    elif ext == ".xlsx":
+        text = _xlsx_text(data, label)
     else:  # pragma: no cover - guarded by SUPPORTED_EXTENSIONS
         raise FileValidationError(f"'{label}' is not a supported file type.")
 
@@ -157,16 +162,44 @@ def _pdf_text(data: bytes, label: str) -> str:
         raise FileValidationError(f"'{label}' could not be read as a PDF.") from exc
 
 
-def _docx_text(data: bytes, label: str) -> str:
+def _check_office_zip(data: bytes, label: str, required_member: str, kind: str) -> None:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            names = zf.namelist()
-            if "word/document.xml" not in names:
-                raise FileValidationError(f"'{label}' is not a valid Word document.")
-            if sum(info.file_size for info in zf.infolist()) > MAX_DOCX_UNCOMPRESSED:
+            if required_member not in zf.namelist():
+                raise FileValidationError(f"'{label}' is not a valid {kind}.")
+            if sum(info.file_size for info in zf.infolist()) > MAX_ZIP_UNCOMPRESSED:
                 raise FileValidationError(f"'{label}' is too large once decompressed.")
     except zipfile.BadZipFile as exc:
-        raise FileValidationError(f"'{label}' is not a valid Word document.") from exc
+        raise FileValidationError(f"'{label}' is not a valid {kind}.") from exc
+
+
+def _xlsx_text(data: bytes, label: str) -> str:
+    _check_office_zip(data, label, "xl/workbook.xml", "Excel workbook")
+    try:
+        import openpyxl
+    except ImportError as exc:
+        raise FileValidationError("Excel support is not installed on this server (openpyxl).") from exc
+    try:
+        workbook = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception as exc:
+        raise FileValidationError(f"'{label}' could not be read as an Excel workbook.") from exc
+    try:
+        lines = []
+        for sheet in workbook.worksheets:
+            lines.append(f"[Sheet {sheet.title}]")
+            for i, row in enumerate(sheet.iter_rows(values_only=True)):
+                if i >= XLSX_PREVIEW_ROWS:
+                    break
+                cells = ["" if v is None else str(v) for v in row]
+                if any(cells):
+                    lines.append(",".join(cells))
+        return "\n".join(lines)
+    finally:
+        workbook.close()
+
+
+def _docx_text(data: bytes, label: str) -> str:
+    _check_office_zip(data, label, "word/document.xml", "Word document")
 
     try:
         import docx

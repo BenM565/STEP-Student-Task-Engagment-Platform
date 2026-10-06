@@ -94,6 +94,9 @@ class RequirementsToTaskAgent(BaseAgent):
     )
     run_button_label = "Draft STEP task"
 
+    sample_input = {"need": "We need to improve our website onboarding process.",
+                    "context": "Small online retailer; most new customers sign up on mobile."}
+
     input_model = RequirementsToTaskInput
     output_model = RequirementsToTaskOutput
     system_prompt = SYSTEM_PROMPT
@@ -121,7 +124,7 @@ class RequirementsToTaskAgent(BaseAgent):
     def task_draft(self, output: RequirementsToTaskOutput):
         return output.task
 
-    def to_markdown(self, o: RequirementsToTaskOutput) -> str:
+    def to_markdown(self, o: RequirementsToTaskOutput, artifacts=None) -> str:
         t = o.task
         lines = ["# STEP task draft", "", o.interpretation, "",
                  f"**Suitable for a student:** {'Yes' if o.suitable_for_student else 'No'} - {o.suitability_rationale}", "",

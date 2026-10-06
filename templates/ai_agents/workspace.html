@@ -53,7 +53,9 @@
 
           {% if agent.accepts_files %}
             <div class="mb-4">
-              <label class="form-label fw-semibold" for="f_files">Supporting documents</label>
+              <label class="form-label fw-semibold" for="f_files">
+                {{ agent.files_label }}{% if agent.min_files %} <span class="text-danger">*</span>{% endif %}
+              </label>
               {% if prior_files %}
                 <div class="border rounded p-2 mb-2 small">
                   <div class="text-muted mb-1">Documents from the previous run</div>
@@ -65,14 +67,15 @@
                   {% endfor %}
                 </div>
               {% endif %}
-              <input class="form-control {% if errors.get('files') %}is-invalid{% endif %}" type="file" id="f_files" name="files" multiple
+              <input class="form-control {% if errors.get('files') %}is-invalid{% endif %}" type="file" id="f_files" name="files" {% if agent.max_files > 1 %}multiple{% endif %}
                      accept="{{ agent.allowed_extensions|sort|join(',') }}">
               {% if errors.get('files') %}
                 <div class="invalid-feedback">{{ errors['files'] }}</div>
               {% else %}
                 <div class="form-text">
-                  Optional. Up to {{ agent.max_files }} files ({{ agent.allowed_extensions|sort|join(', ') }}), {{ config['AI_MAX_FILE_BYTES'] // (1024*1024) }} MB each.
-                  Only the documents you attach here are shared with this agent.
+                  {% if agent.files_help %}{{ agent.files_help }}{% else %}{{ 'Required' if agent.min_files else 'Optional' }}. Up to {{ agent.max_files }} file{{ 's' if agent.max_files != 1 }}.{% endif %}
+                  Accepted: {{ agent.allowed_extensions|sort|join(', ') }}, up to {{ config['AI_MAX_FILE_BYTES'] // (1024*1024) }} MB each.
+                  Only the files you attach here are shared with this agent.
                 </div>
               {% endif %}
             </div>
@@ -84,7 +87,7 @@
               <span id="runLabel">{{ agent.run_button_label }}</span>
             </button>
             <a href="{{ url_for('ai_agents.catalogue') }}" class="btn btn-outline-secondary">Cancel</a>
-            <span class="small text-muted d-none" id="runHint">The agent is working. This can take a minute or two; please keep this page open.</span>
+            <span class="small text-muted d-none" id="runHint">Starting the agent…</span>
           </div>
         </form>
       </div>
@@ -118,7 +121,7 @@
     const btn = document.getElementById('runBtn');
     btn.disabled = true;
     document.getElementById('runSpinner').classList.remove('d-none');
-    document.getElementById('runLabel').textContent = 'Running…';
+    document.getElementById('runLabel').textContent = 'Submitting…';
     document.getElementById('runHint').classList.remove('d-none');
   });
 </script>

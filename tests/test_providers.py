@@ -113,3 +113,80 @@ def test_task_bridge_formats_and_clamps():
     assert form["estimated_hours"] == 1
     assert "Deliverables:\n- Research report\n- Clickable prototype" in form["requirements"]
     assert "Milestones:\n- Research plan - Interview guide agreed with the company" in form["requirements"]
+
+
+class ResearchMessages:
+    """Returns a paused turn first, then the final turn."""
+
+    def __init__(self, responses):
+        self.responses, self.calls = list(responses), []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.responses.pop(0)
+
+
+def _search_turn(stop_reason, blocks, searches):
+    usage = SimpleNamespace(input_tokens=500, output_tokens=100, cache_read_input_tokens=0, cache_creation_input_tokens=0,
+                            server_tool_use=SimpleNamespace(web_search_requests=searches, web_fetch_requests=0))
+    return SimpleNamespace(stop_reason=stop_reason, content=blocks, model="claude-opus-5-5", usage=usage, stop_details=None)
+
+
+def test_research_collects_sources_and_resumes_paused_turn():
+    result_block = SimpleNamespace(type="web_search_tool_result", content=[
+        SimpleNamespace(type="web_search_result", url="https://a.ie/x", title="A", page_age="2025-01-01"),
+        SimpleNamespace(type="web_search_result", url="https://b.ie/y", title="B", page_age=None),
+    ])
+    error_block = SimpleNamespace(type="web_search_tool_result", content=SimpleNamespace(error_code="max_uses_exceeded"))
+    cited = SimpleNamespace(type="text", text="Final notes.", citations=[
+        SimpleNamespace(type="web_search_result_location", url="https://c.ie/z", title="C"),
+        SimpleNamespace(type="web_search_result_location", url="https://a.ie/x", title="A again"),
+    ])
+    paused = _search_turn("pause_turn", [SimpleNamespace(type="text", text="Searching. ", citations=None), result_block], 2)
+    final = _search_turn("end_turn", [error_block, cited], 1)
+    messages = ResearchMessages([paused, final])
+    client = SimpleNamespace(beta=SimpleNamespace(messages=messages))
+
+    result = AnthropicProvider(api_key=None, model="claude-opus-5-5", client=client).research(
+        system="S", prompt="P", max_searches=5)
+
+    assert [s.url for s in result.sources] == ["https://a.ie/x", "https://b.ie/y", "https://c.ie/z"]
+    assert result.text == "Searching. Final notes."
+    assert (result.usage.input_tokens, result.usage.web_search_requests) == (1000, 3)
+    first, second = messages.calls
+    assert first["tools"] == [{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}]
+    # Resume sends the paused assistant turn back unchanged, with no extra user message
+    assert second["messages"][-1] == {"role": "assistant", "content": paused.content}
+    assert len(second["messages"]) == 2
+
+
+def test_research_gives_up_after_repeated_pauses():
+    turns = [_search_turn("pause_turn", [], 1) for _ in range(4)]
+    client = SimpleNamespace(beta=SimpleNamespace(messages=ResearchMessages(turns)))
+    with pytest.raises(ProviderError) as exc:
+        AnthropicProvider(api_key=None, model="m", client=client).research(system="s", prompt="p")
+    assert exc.value.code == "research_incomplete" and exc.value.usage.web_search_requests == 4
+
+
+def test_research_bad_request_mentions_web_search():
+    client, _ = _client(error=_status_error(anthropic.BadRequestError, 400))
+    with pytest.raises(ProviderError) as exc:
+        AnthropicProvider(api_key=None, model="m", client=client).research(system="s", prompt="p")
+    assert "web search is enabled" in exc.value.user_message
+
+
+def test_base_provider_research_is_optional():
+    from ai_agents.providers.base import AIProvider
+
+    class TextOnly(AIProvider):
+        name = "text-only"
+
+        def generate(self, **kw):
+            pass
+
+        def structured_output(self, **kw):
+            pass
+
+    with pytest.raises(ProviderError) as exc:
+        TextOnly().research(system="s", prompt="p")
+    assert exc.value.code == "capability_unavailable"
