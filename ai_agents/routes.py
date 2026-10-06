@@ -37,6 +37,14 @@ def workspace(slug):
 
     values, errors, prior_files, parent_run_id = {}, {}, [], None
 
+    # "Continue in another agent": an earlier result from this company becomes context
+    context_run = None
+    context_id = request.values.get("context_run", type=int)
+    if context_id and agent.accepts_context:
+        context_run = service.company_run_or_404(context_id, current_user.id)
+        if context_run.status != "succeeded":
+            context_run = None
+
     rerun_id = request.values.get("rerun", type=int)
     if rerun_id:
         parent = service.company_run_or_404(rerun_id, current_user.id)
@@ -53,7 +61,7 @@ def workspace(slug):
 
         try:
             data = service.validate_input(agent, values)
-            attached = len(uploads) + len(reused)
+            attached = len(uploads) + len(reused) + (1 if context_run else 0)
             if attached > agent.max_files:
                 noun = "file" if agent.max_files == 1 else "files"
                 raise service.InputInvalid({"files": f"Attach at most {agent.max_files} {noun}."})
@@ -71,12 +79,40 @@ def workspace(slug):
         else:
             run = service.submit_run(agent=agent, record=record, data=data, files=reused + new_files,
                                      company_id=current_user.id, user_id=current_user.id,
-                                     parent_run_id=parent_run_id)
+                                     parent_run_id=parent_run_id,
+                                     context_run_id=context_run.id if context_run else None)
             return redirect(url_for("ai_agents.run_detail", run_id=run.id))
 
     status = 400 if errors else 200
     return render_template("ai_agents/workspace.html", agent=agent, values=values, errors=errors,
-                           prior_files=prior_files, parent_run_id=parent_run_id), status
+                           prior_files=prior_files, parent_run_id=parent_run_id, context_run=context_run,
+                           agent_names=_agent_names()), status
+
+
+@bp.route("/runs/<int:run_id>/refine", methods=["POST"])
+def refine(run_id):
+    """Ask the agent to revise a result using the company's feedback; the original is kept."""
+    run = service.company_run_or_404(run_id, current_user.id)
+    feedback = (request.form.get("feedback") or "").strip()
+    if run.status != "succeeded":
+        flash("Only completed results can be refined.", "warning")
+        return redirect(url_for("ai_agents.run_detail", run_id=run.id))
+    if len(feedback) < 5:
+        flash("Tell the agent what to change.", "danger")
+        return redirect(url_for("ai_agents.run_detail", run_id=run.id) + "#refine")
+    try:
+        agent, record = service.resolve_agent(run.agent_slug, current_user.id)
+        data = agent.input_model.model_validate(run.input_data)
+        service.check_run_limit(current_user.id)
+    except service.AgentUnavailable:
+        abort(404)
+    except service.RunLimitReached as exc:
+        flash(f"Your company has reached its limit of {exc.args[0]} agent runs in 24 hours.", "danger")
+        return redirect(url_for("ai_agents.run_detail", run_id=run.id))
+    new_run = service.submit_run(agent=agent, record=record, data=data, files=list(run.files),
+                                 company_id=current_user.id, user_id=current_user.id, parent_run_id=run.id,
+                                 refinement=feedback[:3000], context_run_id=run.context_run_id)
+    return redirect(url_for("ai_agents.run_detail", run_id=new_run.id))
 
 
 @bp.route("/runs")
@@ -114,8 +150,16 @@ def run_detail(run_id):
         Task = current_app.extensions["ai_agents"]["task_model"]
         created_task = Task.query.filter_by(id=run.created_task_id, company_id=current_user.id).first()
     can_rerun = agent is not None and _agent_available(agent.slug)
+    parent = AgentRun.query.filter_by(id=run.parent_run_id, company_id=current_user.id).first() if run.parent_run_id else None
+    context = AgentRun.query.filter_by(id=run.context_run_id, company_id=current_user.id).first() if run.context_run_id else None
+    revisions = AgentRun.query.filter_by(parent_run_id=run.id, company_id=current_user.id).filter(
+        AgentRun.refinement.isnot(None)).order_by(AgentRun.id).all()
+    continue_with = [a for a, _ in service.agents_for_company(current_user.id)
+                     if a.accepts_context and a.slug != run.agent_slug] if output is not None else []
     return render_template("ai_agents/run_detail.html", run=run, agent=agent, output=output, draft=draft,
-                           created_task=created_task, can_rerun=can_rerun, artifacts=run.artifacts or {})
+                           created_task=created_task, can_rerun=can_rerun, artifacts=run.artifacts or {},
+                           parent=parent, context=context, revisions=revisions, continue_with=continue_with,
+                           agent_names=_agent_names())
 
 
 @bp.route("/runs/<int:run_id>/status")

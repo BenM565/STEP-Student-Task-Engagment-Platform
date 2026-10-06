@@ -198,9 +198,10 @@ def test_data_analysis_bad_dataset_fails_cleanly(app, client, make_user):
 def test_all_agents_listed_in_catalogue(app, client, make_user):
     login(client, make_user())
     html = client.get("/company/ai-agents").get_data(as_text=True)
-    for name in ("Business Analyst", "Document Analyst", "Market Researcher", "Data Analyst", "Requirements-to-Task"):
+    for name in ("Business Analyst", "Document Analyst", "Market Researcher", "Data Analyst", "Requirements-to-Task",
+                 "Process Automation Advisor"):
         assert name in html
-    assert AIAgent.query.count() == 5
+    assert AIAgent.query.count() == 6
 
 
 def test_new_agent_task_handoff(app, client, make_user):

@@ -200,7 +200,8 @@ def estimate_cost(model: Optional[str], usage: Usage) -> Optional[Decimal]:
 
 
 def submit_run(*, agent: BaseAgent, record: AIAgent, data: BaseModel, files: List[AgentFile],
-               company_id: int, user_id: int, parent_run_id: Optional[int] = None) -> AgentRun:
+               company_id: int, user_id: int, parent_run_id: Optional[int] = None,
+               refinement: Optional[str] = None, context_run_id: Optional[int] = None) -> AgentRun:
     """Queue a run and hand it to the configured executor. Returns immediately except in inline mode."""
     run = AgentRun(
         company_id=company_id,
@@ -209,9 +210,11 @@ def submit_run(*, agent: BaseAgent, record: AIAgent, data: BaseModel, files: Lis
         agent_slug=agent.slug,
         agent_version=agent.version,
         status="queued",
-        title=agent.run_title(data)[:200],
+        title=(f"Revised: {agent.run_title(data)}" if refinement else agent.run_title(data))[:200],
         input_data=data.model_dump(mode="json"),
         parent_run_id=parent_run_id,
+        refinement=refinement,
+        context_run_id=context_run_id,
     )
     run.files = list(files)
     db.session.add(run)
@@ -286,8 +289,15 @@ def execute_claimed_run(run_id: int) -> None:
         data = agent.input_model.model_validate(run.input_data)
         provider = get_provider()
         run.provider = provider.name
-        ctx = AgentContext(data=data, documents=build_documents(list(run.files)), files=list(run.files),
-                           provider=provider, config=current_app.config)
+        documents = context_documents(run) + build_documents(list(run.files))
+        previous = None
+        if run.refinement and run.parent_run_id:
+            parent = AgentRun.query.filter_by(id=run.parent_run_id, company_id=run.company_id).first()
+            previous = parent.output_data if parent is not None else None
+            if previous is None:
+                raise ProviderError("refinement_unavailable", "The result you asked to revise is no longer available.")
+        ctx = AgentContext(data=data, documents=documents, files=list(run.files), provider=provider,
+                           config=current_app.config, refinement=run.refinement, previous_output=previous)
         result = agent.execute(ctx)
         run.output_data = result.output.model_dump(mode="json")
         run.artifacts = result.artifacts
@@ -312,6 +322,53 @@ def execute_claimed_run(run_id: int) -> None:
         run.duration_ms = int((time.monotonic() - started) * 1000)
         run.completed_at = utcnow()
         db.session.commit()
+    _notify_finished(run, agent)
+
+
+def _notify_finished(run: AgentRun, agent: Optional[BaseAgent]) -> None:
+    # Background runs tell the company when they finish; inline runs show the result directly
+    if current_app.config.get("AI_EXECUTION_MODE") == "inline":
+        return
+    from flask import url_for
+
+    from core.notifications import notify
+
+    try:
+        name = agent.name if agent else run.agent_slug
+        with current_app.test_request_context():
+            link = url_for("ai_agents.run_detail", run_id=run.id)
+        if run.status == "succeeded":
+            notify(run.company_id, f"Your {name} result is ready: \"{run.title}\".", link)
+        else:
+            notify(run.company_id, f"Your {name} run \"{run.title}\" did not complete.", link)
+        db.session.commit()
+    except Exception:  # noqa: BLE001 - a notification must never break the worker
+        db.session.rollback()
+        log.exception("Could not create completion notification for run %s", run.id)
+
+
+def context_documents(run: AgentRun) -> List[DocumentContext]:
+    """The earlier result passed in via "Continue in another agent" (same company only)."""
+    if not run.context_run_id:
+        return []
+    source = AgentRun.query.filter_by(id=run.context_run_id, company_id=run.company_id, status="succeeded").first()
+    if source is None:
+        return []
+    text = report_text(source)
+    if not text:
+        return []
+    source_agent = get_agent(source.agent_slug)
+    label = source_agent.name if source_agent else source.agent_slug
+    return [DocumentContext(filename=f"{label} result (run {source.id}).md", text=text, truncated=False)]
+
+
+def report_text(run: AgentRun) -> Optional[str]:
+    """The company-facing report for a run: their edited version if any, else the AI result as Markdown."""
+    if run.edited_report:
+        return run.edited_report
+    agent = get_agent(run.agent_slug)
+    output = parsed_output(agent, run) if agent else None
+    return agent.to_markdown(output, artifacts=run.artifacts) if output is not None else None
 
 
 def _record_usage(run: AgentRun, ctx: AgentContext) -> None:

@@ -127,7 +127,29 @@ def sample_data_output():
     }
 
 
+def sample_process_output():
+    return {
+        "summary": "Invoice entry is manual and slow.",
+        "current_process": [{"step": "Type invoice into Xero", "actor": "Accounts assistant",
+                             "time_per_occurrence": "6 minutes", "pain_points": ["Typos"]}],
+        "opportunities": [{"title": "OCR invoice capture", "steps_affected": ["Type invoice into Xero"],
+                           "approach": "Forward invoices to an OCR inbox that drafts bills", "automation_level": "partial",
+                           "tools": ["Xero bill capture"], "effort": "low", "impact": "high",
+                           "time_saving_estimate": "200 x 5 min = ~16.7 hours/month (assumes 1 min left per invoice)",
+                           "risks": ["OCR errors on poor scans"]}],
+        "quick_wins": ["Use one shared inbox for invoices"],
+        "keep_human": [{"activity": "Approving payments", "reason": "Accountability"}],
+        "roadmap": [{"phase": "Pilot", "description": "Trial OCR on one supplier", "opportunities": ["OCR invoice capture"],
+                     "indicative_duration": "2 weeks"}],
+        "assumptions": ["Volumes are steady"],
+        "questions": ["How many suppliers?"],
+        "recommended_next_steps": sample_next_steps(),
+        "human_task_assessment": sample_assessment(recommended=True),
+    }
+
+
 DEFAULT_OUTPUTS = {
+    "ProcessAutomationOutput": sample_process_output,
     "BusinessAnalysisOutput": sample_ba_output,
     "DocumentAnalysisOutput": sample_document_output,
     "MarketResearchOutput": sample_market_output,

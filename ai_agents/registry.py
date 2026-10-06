@@ -56,6 +56,9 @@ class AgentContext:
     config: Mapping[str, Any]
     usage: Usage = field(default_factory=Usage)
     model: Optional[str] = None
+    # Refinement: the company's feedback on an earlier result, and that result
+    refinement: Optional[str] = None
+    previous_output: Optional[Dict[str, Any]] = None
 
     def record(self, result) -> None:
         # Accumulate usage across the provider calls an agent makes
@@ -102,6 +105,8 @@ class BaseAgent:
 
     # Capabilities the agent needs from the provider/config
     requires_web_search: ClassVar[bool] = False
+    # Can take another agent's result as a context document ("Continue in another agent")
+    accepts_context: ClassVar[bool] = True
 
     # Execution
     max_output_tokens: ClassVar[int] = 16000
@@ -127,7 +132,7 @@ class BaseAgent:
         """
         result = ctx.provider.structured_output(
             system=self.full_system_prompt(),
-            prompt=self.build_prompt(ctx.data, ctx.documents),
+            prompt=self.build_prompt(ctx.data, ctx.documents) + self.refinement_block(ctx),
             output_model=self.output_model,
             max_tokens=self.max_output_tokens,
             effort=self.effort,
@@ -145,6 +150,23 @@ class BaseAgent:
     def task_draft(self, output: BaseModel) -> Optional[StepTaskDraft]:
         # Override in agents that can propose a STEP task
         return None
+
+    @staticmethod
+    def refinement_block(ctx: "AgentContext") -> str:
+        """Prompt suffix asking for a revision of the previous result. Empty when not refining."""
+        if not ctx.refinement or ctx.previous_output is None:
+            return ""
+        import json
+
+        return (
+            "\n\nThis is a revision. Your previous result for the same input is below, followed by the company's "
+            "feedback on it.\n\n"
+            f"<previous_result>\n{json.dumps(ctx.previous_output, ensure_ascii=False)}\n</previous_result>\n\n"
+            f"<company_input field=\"feedback\">\n{ctx.refinement}\n</company_input>\n\n"
+            "Return the complete revised result. Address every point in the feedback; keep the parts it does not "
+            "ask you to change unless they are wrong. If the feedback asks for something the input cannot support, "
+            "say so in the most relevant section rather than inventing it."
+        )
 
     @staticmethod
     def render_documents(documents: List[DocumentContext]) -> str:

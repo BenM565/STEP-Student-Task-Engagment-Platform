@@ -13,6 +13,13 @@
         {% if errors.get('__all__') %}
           <div class="alert alert-danger d-block">{{ errors['__all__'] }}</div>
         {% endif %}
+        {% if context_run %}
+          <div class="alert alert-info small d-block">
+            <i class="bi bi-link-45deg me-1"></i>The result of
+            <a href="{{ url_for('ai_agents.run_detail', run_id=context_run.id) }}">{{ agent_names.get(context_run.agent_slug, context_run.agent_slug) }} run #{{ context_run.id }}</a>
+            ("{{ context_run.title }}") will be given to this agent as context{% if context_run.edited_report %}, using your edited version{% endif %}.
+          </div>
+        {% endif %}
         {% if parent_run_id %}
           <div class="alert alert-secondary small d-block">
             Running again from <a href="{{ url_for('ai_agents.run_detail', run_id=parent_run_id) }}">run #{{ parent_run_id }}</a>. Adjust the input below if needed.
@@ -22,6 +29,7 @@
         <form method="post" enctype="multipart/form-data" id="agentForm" novalidate>
           <input type="hidden" name="csrf_token" value="{{ ai_csrf_token() }}">
           {% if parent_run_id %}<input type="hidden" name="rerun" value="{{ parent_run_id }}">{% endif %}
+          {% if context_run %}<input type="hidden" name="context_run" value="{{ context_run.id }}">{% endif %}
 
           {% for field in agent.input_fields %}
             <div class="mb-3">

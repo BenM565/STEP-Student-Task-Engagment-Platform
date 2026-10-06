@@ -38,6 +38,17 @@
       {% if can_rerun %}
         <a href="{{ url_for('ai_agents.workspace', slug=run.agent_slug, rerun=run.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-repeat me-1"></i>Run again</a>
       {% endif %}
+      {% if continue_with %}
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-arrow-right-circle me-1"></i>Continue in</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><h6 class="dropdown-header">Use this result as context for</h6></li>
+            {% for a in continue_with %}
+              <li><a class="dropdown-item" href="{{ url_for('ai_agents.workspace', slug=a.slug, context_run=run.id) }}"><i class="bi bi-{{ a.icon }} me-2"></i>{{ a.name }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
       {% if run.status == 'succeeded' %}
         <div class="dropdown">
           <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Export</button>
@@ -56,6 +67,26 @@
     </div>
   </div>
 </div>
+
+{% if run.refinement or context or revisions %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body small">
+      {% if run.refinement %}
+        <div class="mb-1"><i class="bi bi-arrow-repeat me-1"></i>Revision of
+          {% if parent %}<a href="{{ url_for('ai_agents.run_detail', run_id=parent.id) }}">run #{{ parent.id }}</a>{% else %}an earlier run{% endif %}.
+          Your feedback: <span class="fst-italic">"{{ run.refinement }}"</span></div>
+      {% endif %}
+      {% if context %}
+        <div class="mb-1"><i class="bi bi-link-45deg me-1"></i>Used the result of
+          <a href="{{ url_for('ai_agents.run_detail', run_id=context.id) }}">{{ agent_names.get(context.agent_slug, context.agent_slug) }} run #{{ context.id }}</a> as context.</div>
+      {% endif %}
+      {% if revisions %}
+        <div><i class="bi bi-layers me-1"></i>Revised versions:
+          {% for r in revisions %}<a href="{{ url_for('ai_agents.run_detail', run_id=r.id) }}">#{{ r.id }}</a>{% if r.status != 'succeeded' %} ({{ r.status }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}</div>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
 
 {% if run.status == 'failed' %}
   <div class="alert alert-danger d-block">
@@ -112,6 +143,26 @@
 
 {% if output is not none and agent %}
   {% include agent.result_template %}
+{% endif %}
+
+{% if output is not none and can_rerun %}
+  <div class="card shadow-sm mt-3" id="refine">
+    <div class="card-body">
+      <h6 class="fw-bold mb-1"><i class="bi bi-chat-left-text me-2"></i>Refine this result</h6>
+      <p class="small text-muted mb-2">Tell the agent what to change. It produces a revised version as a new run; this one is kept.</p>
+      <form method="post" action="{{ url_for('ai_agents.refine', run_id=run.id) }}" id="refineForm">
+        {{ csrf_field() }}
+        <textarea name="feedback" class="form-control mb-2" rows="3" maxlength="3000" required minlength="5"
+                  placeholder="e.g. Focus on the mobile sign-up flow, drop the accessibility requirements, and make the student task smaller (about 20 hours)."></textarea>
+        <button class="btn btn-sm btn-primary" id="refineBtn">Refine result</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    document.getElementById('refineForm').addEventListener('submit', function () {
+      const b = document.getElementById('refineBtn'); b.disabled = true; b.textContent = 'Submitting…';
+    });
+  </script>
 {% endif %}
 
 <div class="card shadow-sm mt-3">

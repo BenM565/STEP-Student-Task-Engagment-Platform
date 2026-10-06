@@ -140,6 +140,8 @@ class DataAnalysisAgent(BaseAgent):
     allowed_extensions = frozenset({".csv", ".xlsx"})
     min_files = 1
     max_files = 1
+    # Works from the dataset's computed profile, not from text documents
+    accepts_context = False
     files_label = "Dataset"
     files_help = "One CSV or Excel (.xlsx) file with a header row. For Excel files, the first sheet is analysed."
 
@@ -170,7 +172,7 @@ class DataAnalysisAgent(BaseAgent):
         profile = profile_table(table, columns)
         result = ctx.provider.structured_output(
             system=self.full_system_prompt(),
-            prompt=self.build_prompt(ctx.data, ctx.documents, profile),
+            prompt=self.build_prompt(ctx.data, ctx.documents, profile) + self.refinement_block(ctx),
             output_model=self.output_model,
             max_tokens=self.max_output_tokens,
             effort=self.effort,

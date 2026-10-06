@@ -13,7 +13,7 @@ STEP is a single Flask app (`app.py`) using Flask-Login, SQLAlchemy/MySQL and Ji
 
 | Existing file | Change |
 |---|---|
-| `app.py` | `db` moved to `extensions.py` (same object, now shareable); `init_ai_agents(app, task_model=Task)`; `add_task` accepts `?from_run=<id>` to pre-fill, and links the run to the created task; ownership checks added to `view_applicants` / `select_candidate` (they previously let any company read or change another company's applicants) |
+| `app.py` | `db` moved to `extensions.py` (same object, now shareable); `init_ai_agents(app, task_model=Task)`; `add_task` accepts `?from_run=<id>` to pre-fill, and links the run to the created task |
 | `templates/add_task.html` | Pre-fill values and an "AI pre-filled" banner |
 | `templates/base.html`, `dashboard.html` | "AI Agents" links for company accounts |
 | `dashboard.html`, `student_tasks.html` | `white-space: pre-line` so multi-section requirements stay readable |
@@ -39,9 +39,9 @@ ai_agents/
     anthropic_provider.py
   agents/
     business_analyst.py  document_analysis.py  market_research.py
-    data_analysis.py     requirements_to_task.py
+    data_analysis.py     requirements_to_task.py  process_automation.py
 templates/ai_agents/   pages + one result template per agent (+ shared handoff/next-steps partials)
-tests/                 pytest suite (107 tests)
+tests/                 pytest suite
 ```
 
 ## Agents
@@ -52,9 +52,20 @@ tests/                 pytest suite (107 tests)
 | Requirements-to-Task | A vague need | One structured call → scoped STEP task | Separates AI-ready work from student work |
 | Document Analyst | 1–5 documents (PDF/DOCX/TXT/MD/CSV), optional questions | One structured call over extracted text | Each extracted fact is checked word-for-word against the document text ("Found in text" / "Check source"); unanswerable questions are marked "Not in documents" |
 | Market Researcher | Idea, geography, optional customers/competitors/documents | 1) research call with server-side web search; 2) structured call over the notes | Claims can cite only sources actually retrieved in step 1 (unknown IDs are dropped); uncited points are labelled "AI analysis"; the run fails if no web sources come back |
+| Process Automation Advisor | Process description, volume, tools, constraints, optional documents | One structured call | Time-saving estimates must show their arithmetic from the company's own figures, or say "cannot estimate"; lists what should stay human |
 | Data Analyst | One CSV/XLSX, optional question | STEP profiles the data in Python (types, stats, outliers, time series, group totals, correlations); the model interprets the profile; STEP draws the suggested charts from the real data | Raw rows never go to the model beyond an 8-row sample; findings whose figures don't appear in the profile are flagged "Check figures"; invalid chart suggestions are shown as "Not drawn" with the reason |
 
 Every agent returns a `HumanTaskAssessment` and next steps with an owner (company / AI agent / STEP student), so any of them can hand remaining work to a student through **Create STEP task**.
+
+### Working with results
+
+- **Refine:** write feedback on a completed result ("focus on mobile", "make the task smaller"). The agent gets its previous result plus the feedback and produces a revised version as a new run; the original is kept and both link to each other. The Market Researcher also feeds the feedback into fresh web research, and the Data Analyst recomputes the profile.
+- **Continue in another agent:** send a result to a different agent as context, for example Business Analyst → Requirements-to-Task, or Document Analyst → Process Automation Advisor. The receiving agent gets the result as a document, using the company's edited version if there is one. It only works with the same company's completed runs. The Data Analyst is excluded because it works from datasets.
+- **Notifications:** background runs notify the company when they finish or fail.
+
+### Deliberately not built
+
+AI shortlisting of applicants and AI grading of student submissions. Under the EU AI Act, AI used to select candidates or to evaluate people's work performance is a high-risk use (Annex III, employment), with obligations for risk management, human oversight, logging and transparency. STEP's agents work on companies' business problems, and decisions about students stay with people.
 
 ## Agent framework
 
@@ -168,15 +179,13 @@ No separate messages table: agents are single-shot workers, not chats. There is 
 - **Prompt injection:** company text and documents are delimited, and the system prompt treats instructions inside them as material. The worst an injection can do is distort that run's analysis, which the company reviews.
 - **Uploads:** extension allowlist per agent, size cap, content checks (PDF header, DOCX/XLSX zip structure, zip-bomb limit, no binary in text files), row/column caps for datasets, random stored filenames outside `/static`, download only as an attachment by the owning company.
 - **Secrets:** API key read from the environment on the server only.
-- **CSRF:** all POSTs in the AI area require a session token.
+- **CSRF:** every POST in STEP, including the AI area, requires a session token (see PLATFORM.md).
 - **Cost control:** per-company daily run cap, web search `max_uses` per run, and the submit button disables to prevent double runs.
 
 ## Known gaps and recommendations
 
 - `.env` with a database password and `FLASK_SECRET=secret` is committed to git. Rotate both and remove the file from tracking.
-- Anyone can register as `admin` through `/register`.
-- The rest of STEP has no CSRF protection, and `select_candidate` changes data on a GET request.
-- `base.html` has an unclosed `data-theme="dark` attribute, references a missing `static/css/theme.css`, and loads Tailwind, DaisyUI and Bootstrap together. DaisyUI's `.alert` overrides Bootstrap's layout; the AI templates work around this.
-- The `tasks` table only has title/requirements/hours, so the structured task is composed into `requirements`. Adding columns (skills, deliverables, milestones) would need a migration tool such as Flask-Migrate.
+- Platform-wide gaps (payments, email verification, login rate limiting) are listed in PLATFORM.md.
+- The `tasks` table only has title/requirements/hours, so the structured task is composed into `requirements`. Separate columns for skills, deliverables and milestones could be added through `core/schema.py`.
 - Scanned (image-only) PDFs are not supported. Excel analysis reads the first sheet only, using the values Excel last calculated.
-- Runs are single-shot: there is no follow-up conversation on a result yet ("Run again" pre-fills the previous input).
+- Refinement creates a new run each time. There is no free-form chat about a result.

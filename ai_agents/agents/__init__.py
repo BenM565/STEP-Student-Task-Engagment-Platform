@@ -4,5 +4,6 @@ from . import (  # noqa: F401
     data_analysis,
     document_analysis,
     market_research,
+    process_automation,
     requirements_to_task,
 )

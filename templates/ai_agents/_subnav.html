@@ -9,7 +9,7 @@
     <h4 class="mb-1">{{ heading }}</h4>
     {% if subheading %}<p class="text-muted mb-0">{{ subheading }}</p>{% endif %}
   </div>
-  <ul class="nav nav-pills small">
+  <ul class="nav nav-pills small flex-nowrap flex-shrink-0">
     <li class="nav-item">
       <a class="nav-link py-1 {% if request.endpoint in ('ai_agents.catalogue', 'ai_agents.workspace') %}active{% endif %}"
          href="{{ url_for('ai_agents.catalogue') }}"><i class="bi bi-grid me-1"></i>Agents</a>

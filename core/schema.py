@@ -18,6 +18,18 @@ CORE_ADDITIVE_COLUMNS = {
 }
 
 
+def add_column_ddl(table, name, dialect) -> str:
+    """ALTER TABLE statement adding one column, valid on MySQL and SQLite."""
+    column = table.c[name]
+    ddl = f"ALTER TABLE {table.name} ADD COLUMN {name} {column.type.compile(dialect=dialect)}"
+    if column.server_default is not None:
+        default = column.server_default.arg
+        ddl += f" NOT NULL DEFAULT '{default}'" if not column.nullable else f" DEFAULT '{default}'"
+    elif not column.nullable:
+        raise RuntimeError(f"Cannot add NOT NULL column {table.name}.{name} without a server default")
+    return ddl
+
+
 def add_missing_columns(model, column_names) -> list:
     """ALTER TABLE to add any of column_names missing from model's table. Returns the columns added."""
     table = model.__table__
@@ -27,14 +39,7 @@ def add_missing_columns(model, column_names) -> list:
     for name in column_names:
         if name in existing:
             continue
-        column = table.c[name]
-        ddl = f"ALTER TABLE {table.name} ADD COLUMN {name} {column.type.compile(dialect=dialect)}"
-        if column.server_default is not None:
-            default = column.server_default.arg
-            ddl += f" NOT NULL DEFAULT '{default}'" if not column.nullable else f" DEFAULT '{default}'"
-        elif not column.nullable:
-            raise RuntimeError(f"Cannot add NOT NULL column {table.name}.{name} without a server default")
-        db.session.execute(text(ddl))
+        db.session.execute(text(add_column_ddl(table, name, dialect)))
         added.append(f"{table.name}.{name}")
     db.session.commit()
     return added

@@ -1,0 +1,103 @@
+{# Structured view of ProcessAutomationOutput; expects `output`, `run`, `draft`, `created_task` #}
+{% set level = {'low': 'text-bg-light border', 'medium': 'text-bg-warning', 'high': 'text-bg-success'} %}
+{% set effort = {'low': 'text-bg-success', 'medium': 'text-bg-warning', 'high': 'text-bg-danger'} %}
+{% set auto = {'full': 'Full automation', 'partial': 'Partial: people handle exceptions', 'assistive': 'Assistive: tool helps a person'} %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">Summary</h6>
+    <p class="mb-0">{{ output.summary }}</p>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">The process today</h6>
+    <ol class="list-group list-group-numbered list-group-flush small">
+      {% for s in output.current_process %}
+        <li class="list-group-item px-0 d-flex gap-2">
+          <div class="ms-2 me-auto">
+            <div class="fw-semibold">{{ s.step }}</div>
+            <div class="text-muted">{{ s.actor }} · {{ s.time_per_occurrence }}</div>
+            {% if s.pain_points %}<div class="text-danger-emphasis">{{ s.pain_points|join('; ') }}</div>{% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Automation opportunities <span class="small text-muted fw-normal">best value first</span></h6>
+    {% for op in output.opportunities %}
+      <div class="border rounded p-3 mb-3 bg-white small">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-1">
+          <div class="fw-semibold">{{ op.title }}</div>
+          <div>
+            <span class="badge {{ level[op.impact] }}">Impact: {{ op.impact }}</span>
+            <span class="badge {{ effort[op.effort] }}">Effort: {{ op.effort }}</span>
+          </div>
+        </div>
+        <div class="text-muted mb-2">{{ auto[op.automation_level] }}{% if op.steps_affected %} · steps: {{ op.steps_affected|join(', ') }}{% endif %}</div>
+        <div class="mb-2">{{ op.approach }}</div>
+        {% if op.tools %}<div class="mb-1"><span class="fw-semibold">Tools:</span> {{ op.tools|join(', ') }}</div>{% endif %}
+        <div class="mb-1"><span class="fw-semibold">Time saving:</span> {{ op.time_saving_estimate }}</div>
+        {% if op.risks %}<ul class="ps-3 mb-0 text-muted">{% for r in op.risks %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+    {% else %}
+      <p class="small text-muted mb-0">No automation opportunities identified.</p>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-2"><i class="bi bi-lightning me-1"></i>Quick wins</h6>
+      <ul class="small ps-3 mb-0">{% for q in output.quick_wins %}<li class="mb-1">{{ q }}</li>{% else %}<li class="text-muted">None.</li>{% endfor %}</ul>
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-2"><i class="bi bi-person me-1"></i>Keep human</h6>
+      {% for k in output.keep_human %}
+        <div class="small mb-2"><span class="fw-semibold">{{ k.activity }}</span> <span class="text-muted">— {{ k.reason }}</span></div>
+      {% else %}<p class="small text-muted mb-0">Nothing flagged.</p>{% endfor %}
+    </div></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Roadmap</h6>
+    {% for p in output.roadmap %}
+      <div class="d-flex gap-3 small {% if not loop.last %}mb-3{% endif %}">
+        <span class="badge text-bg-primary align-self-start">{{ loop.index }}</span>
+        <div>
+          <div class="fw-semibold">{{ p.phase }} <span class="text-muted fw-normal">· {{ p.indicative_duration }}</span></div>
+          <div>{{ p.description }}</div>
+          {% if p.opportunities %}<div class="text-muted">{{ p.opportunities|join(', ') }}</div>{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-2">Questions for you</h6>
+      <ol class="small ps-3 mb-0">{% for q in output.questions %}<li class="mb-1">{{ q }}</li>{% else %}<li class="text-muted">None.</li>{% endfor %}</ol>
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="fw-bold mb-2">Assumptions made</h6>
+      <ul class="small ps-3 mb-0">{% for a in output.assumptions %}<li class="mb-1">{{ a }}</li>{% else %}<li class="text-muted">None.</li>{% endfor %}</ul>
+    </div></div>
+  </div>
+</div>
+
+{% with a = output.human_task_assessment %}{% include "ai_agents/results/_human_task.html" %}{% endwith %}
+{% with steps = output.recommended_next_steps %}{% include "ai_agents/results/_next_steps.html" %}{% endwith %}

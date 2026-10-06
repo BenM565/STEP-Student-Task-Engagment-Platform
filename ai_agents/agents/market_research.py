@@ -154,9 +154,14 @@ class MarketResearchAgent(BaseAgent):
 
     def execute(self, ctx) -> AgentResult:
         brief = self.build_prompt(ctx.data, ctx.documents)
+        research_brief = f"Research this market.\n\n{brief}"
+        if ctx.refinement:
+            # Revisions may need new research (e.g. "look into competitor X"), so the feedback steers the search too
+            research_brief += (f"\n\nThe company reviewed an earlier report and asked for these changes; focus the "
+                               f"research on them:\n<company_input field=\"feedback\">\n{ctx.refinement}\n</company_input>")
         research = ctx.provider.research(
             system=f"{RESEARCH_PROMPT}\n\n{SHARED_GUARDRAILS}",
-            prompt=f"Research this market.\n\n{brief}",
+            prompt=research_brief,
             max_searches=int(ctx.config.get("AI_WEB_SEARCH_MAX_USES", 8)),
             effort=self.effort,
         )
@@ -174,7 +179,7 @@ class MarketResearchAgent(BaseAgent):
         structured = ctx.provider.structured_output(
             system=self.full_system_prompt(),
             prompt=(f"{brief}\n\n<research_notes>\n{research.text}\n</research_notes>\n\n"
-                    f"<sources>\n{source_list}\n</sources>"),
+                    f"<sources>\n{source_list}\n</sources>" + self.refinement_block(ctx)),
             output_model=self.output_model,
             max_tokens=self.max_output_tokens,
             effort=self.effort,
